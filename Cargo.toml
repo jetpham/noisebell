@@ -1,0 +1,11 @@
+[package]
+name = "noisebell"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.36", features = ["full"] }
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+rppal = "0.22.1"

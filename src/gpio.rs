@@ -1,0 +1,49 @@
+use std::time::Duration;
+
+use anyhow::Result;
+use rppal::gpio::{Gpio, InputPin, Level};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CircuitEvent {
+    Open,
+    Closed,
+}
+
+pub struct GpioMonitor {
+    pin: InputPin,
+    poll_interval: Duration,
+}
+
+impl GpioMonitor {
+    pub fn new(pin_number: u8, poll_interval: Duration) -> Result<Self> {
+        let gpio = Gpio::new()?;
+        let pin = gpio.get(pin_number)?.into_input_pullup();
+
+        Ok(Self { pin, poll_interval })
+    }
+
+    pub async fn monitor<F>(&mut self, mut callback: F) -> Result<()>
+    where
+        F: FnMut(CircuitEvent) + Send + 'static,
+    {
+        let mut previous_state = self.get_current_state();
+
+        loop {
+            let current_state = self.get_current_state();
+
+            if current_state != previous_state {
+                callback(current_state);
+                previous_state = current_state;
+            }
+
+            tokio::time::sleep(self.poll_interval).await;
+        }
+    }
+
+    pub fn get_current_state(&self) -> CircuitEvent {
+        match self.pin.read() {
+            Level::High => CircuitEvent::Open,
+            Level::Low => CircuitEvent::Closed,
+        }
+    }
+}
