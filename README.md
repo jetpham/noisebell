@@ -1,4 +1,4 @@
-# Noisebell
+# Noisebridge Open Status Webhook
 
 Noisebridge's better doorbell
 
@@ -14,16 +14,8 @@ There is no avalible documentation on how this device works and the code is not 
 
 ## New Doorbell Features
 
+Noisebell's infrastructure is based on webhooks. When the switch flips, it sends out 
 Noisebell keeps the breaker switch used already and continues it with more documentation, uptime, transparency, and coolness.
-
-- Status information is distributed to multiple channels rather than just discord:
-
-> - Discord Bot
-> - RSS
-> - Noisebell status website
-> - Telegram Channel
-
-- The status website also shows information about the device and previous hours data
 
 - Automatic security updates with `unattended-upgrades`
 
@@ -31,13 +23,46 @@ Noisebell keeps the breaker switch used already and continues it with more docum
 
 - Automatic running with `Systemd`
 
+- REST API for actively requesting status and updating webhooks
+
+- Webhooks update the current status and startup and shutdown
+
 - All ran on a Raspberry Pi Zero 2 W in a cute case
 
-- Secret managment by uhhhhh. Be Exellent?
+## Channels
+
+The webhooks can connect to any internet connected program. We have planned to connect Noisebridge Open Status Webhook to:
+
+- A Discord Bot
+- A Telegram Channel
+- An Email Chain
+- A RSS feed
+- The 2nd floor open neon sign
+- Home automation light switches
+- 
 
 ## This Repo
 
-This is a monorepo of all of the different services that this project deploys and uses.
+This Repo is the infrastructure for reacting to switch updates and sending out webhooks and responcding to API requests for current status.
+
+## API
+
+### Webhooks 
+
+Will contain a webhook to update the status of the switch. Containing:
+- The new state
+- The time the switch is switched
+
+Another webhook to indicate startup and planning shutdowns
+
+### REST Endpoints
+
+> Will require an API KEY
+
+GET noisebridge open status
+GET Ping pong to check if active
+PUT add webhook
+DELETE webhook
 
 ## Contributing
 
@@ -47,3 +72,11 @@ Please Do! Any and all pull requests are welcome! I am `@jetpham` on the discord
 
 https://github.com/FireflyHacker/discord_room_alert_bot
 https://github.com/0xjmux/room_alert_bot
+
+## Access
+ssh access is with with keys and is currently only with Jet
+with physical access, the username is `noisebridge` and the password is `flaschentaschen`
+
+## ssh
+be connected onto the `Noisebridge Cap` wifi
+`ssh noisebridge@raspberrypi.local`
