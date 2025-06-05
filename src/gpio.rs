@@ -1,12 +1,23 @@
 use std::time::Duration;
+use std::fmt;
+use serde::{Serialize, Deserialize};
 
 use anyhow::Result;
 use rppal::gpio::{Gpio, InputPin, Level};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CircuitEvent {
     Open,
     Closed,
+}
+
+impl fmt::Display for CircuitEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CircuitEvent::Open => write!(f, "open"),
+            CircuitEvent::Closed => write!(f, "closed"),
+        }
+    }
 }
 
 pub struct GpioMonitor {
