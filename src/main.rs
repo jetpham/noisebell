@@ -13,12 +13,19 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     const DEFAULT_GPIO_PIN: u8 = 17;
+    const DEFAULT_WEBHOOK_RETRIES: u32 = 3;
+
     let gpio_pin = std::env::var("GPIO_PIN")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(DEFAULT_GPIO_PIN);
 
-    let webhook_notifier = webhook::WebhookNotifier::new()?;
+    let webhook_retries = std::env::var("WEBHOOK_RETRIES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_WEBHOOK_RETRIES);
+
+    let webhook_notifier = webhook::WebhookNotifier::new(webhook_retries)?;
     let mut gpio_monitor = gpio::GpioMonitor::new(gpio_pin, Duration::from_millis(100))?;
 
     let callback = move |event: gpio::CircuitEvent| {
