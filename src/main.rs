@@ -2,15 +2,40 @@ mod gpio;
 mod webhook;
 
 use std::time::Duration;
+use std::fs;
 
 use anyhow::Result;
 use tracing::{error, info};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::filter::LevelFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    info!("Starting noisebell...");
+    fs::create_dir_all("logs")?;
 
-    tracing_subscriber::fmt::init();
+    let file_appender = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix("noisebell")
+        .filename_suffix("log")
+        .max_log_files(7)
+        .build("logs")?;
+
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+    
+    // Only show our logs and hide hyper logs
+    let filter = tracing_subscriber::filter::Targets::new()
+        .with_target("noisebell", LevelFilter::INFO)
+        .with_target("hyper", LevelFilter::WARN)
+        .with_target("hyper_util", LevelFilter::WARN);
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::Layer::default().with_writer(std::io::stdout))
+        .with(fmt::Layer::default().with_writer(non_blocking))
+        .init();
+
+    info!("Starting noisebell...");
 
     const DEFAULT_GPIO_PIN: u8 = 17;
     const DEFAULT_WEBHOOK_RETRIES: u32 = 3;
