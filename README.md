@@ -1,82 +1,107 @@
-# Noisebridge Open Status Webhook
+# Noisebell
 
-Noisebridge's better doorbell
+A switch monitoring system that detects circuit state changes via GPIO and sends webhook notifications to configured endpoints.
 
-## Explination
+This is build by Jet Pham to be used at Noisebridge to replace their old discord status bot
 
-Noisebridge's old doorbell bot last sent a message on 5/4/25 and has been dead since. There's some thing that could be done to not just revive, it but make it more reliable, accessable, and exellent than ever before.
+## Features
 
-## Old Doorbell
+- GPIO circuit monitoring with configurable pin
+- Webhook notifications with retry mechanism
+- REST API for managing webhook endpoints
+- Daily rotating log files
+- Cross-compilation support for Raspberry Pi deployment
 
-The old boisebridge switch is a large breaker switch connected to a ESP-WROOM-32 ESP32 ESP-32S Development Board which has wifi support.
+## Requirements
 
-There is no avalible documentation on how this device works and the code is not open source.
+- Rust toolchain
+- Raspberry Pi (tested on aarch64)
+- For development: Cross-compilation tools (for `cross` command)
 
-## New Doorbell Features
+## Installation
 
-Noisebell's infrastructure is based on webhooks. When the switch flips, it sends out 
-Noisebell keeps the breaker switch used already and continues it with more documentation, uptime, transparency, and coolness.
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/noisebell.git
+cd noisebell
+```
 
-- Automatic security updates with `unattended-upgrades`
+2. Build the project:
+```bash
+cargo build --release
+```
 
-- Remote development via `ssh`
+## Configuration
 
-- Automatic running with `Systemd`
+### GPIO Pin
+The default GPIO pin is set to 17. You can modify this in `src/main.rs`.
 
-- REST API for actively requesting status and updating webhooks
+### Webhook Endpoints
+Webhook endpoints are stored in `endpoints.json`. The file should follow this format:
+```json
+{
+  "endpoints": [
+    {
+      "url": "https://your-webhook-url.com",
+      "description": "Description of this endpoint"
+    }
+  ]
+}
+```
 
-- Webhooks update the current status and startup and shutdown
+## Usage
 
-- All ran on a Raspberry Pi Zero 2 W in a cute case
+1. Start the server:
+```bash
+./target/release/noisebell
+```
 
-## Channels
+The server will:
+- Start listening on `127.0.0.1:8080`
+- Begin monitoring the configured GPIO pin
+- Send webhook notifications when circuit state changes
 
-The webhooks can connect to any internet connected program. We have planned to connect Noisebridge Open Status Webhook to:
+### API Endpoints
 
-- A Discord Bot
-- A Telegram Channel
-- An Email Chain
-- A RSS feed
-- The 2nd floor open neon sign
-- Home automation light switches
-- 
+#### Add Webhook Endpoint
+```bash
+curl -X POST http://localhost:8080/endpoints \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://your-webhook-url.com",
+    "description": "My webhook"
+  }'
+```
 
-## This Repo
+### Webhook Payload Format
+When a circuit state change is detected, the following JSON payload is sent to all configured endpoints:
+```json
+{
+  "event_type": "circuit_state_change",
+  "timestamp": "2024-03-21T12:34:56Z",
+  "new_state": "open"  // or "closed"
+}
+```
 
-This Repo is the infrastructure for reacting to switch updates and sending out webhooks and responcding to API requests for current status.
+## Deployment
 
-## API
+The project includes a deployment script for Raspberry Pi. To deploy:
 
-### Webhooks 
+1. Ensure you have cross-compilation tools installed:
+```bash
+cargo install cross
+```
 
-Will contain a webhook to update the status of the switch. Containing:
-- The new state
-- The time the switch is switched
+2. Run the deployment script:
+```bash
+./deploy.sh
+```
 
-Another webhook to indicate startup and planning shutdowns
+This will:
+- Cross-compile the project for aarch64
+- Copy the binary and configuration to your Raspberry Pi
+- Set appropriate permissions
 
-### REST Endpoints
+## Logging
 
-> Will require an API KEY
-
-GET noisebridge open status
-GET Ping pong to check if active
-PUT add webhook
-DELETE webhook
-
-## Contributing
-
-Please Do! Any and all pull requests are welcome! I am `@jetpham` on the discord and I'd love to help add any features you think we should add.
-
-## Inspiration
-
-https://github.com/FireflyHacker/discord_room_alert_bot
-https://github.com/0xjmux/room_alert_bot
-
-## Access
-ssh access is with with keys and is currently only with Jet
-with physical access, the username is `noisebridge` and the password is `flaschentaschen`
-
-## ssh
-be connected onto the `Noisebridge Cap` wifi
-`ssh noisebridge@raspberrypi.local`
+Logs are stored in the `logs` directory with daily rotation for the past 7 days
