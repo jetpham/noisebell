@@ -2,19 +2,21 @@ use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::{error, info};
 use std::time::Duration;
 use futures::future::join_all;
 
 use crate::gpio::CircuitEvent;
 
-#[derive(Debug, Deserialize, Clone)]
-struct Endpoint {
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Endpoint {
     url: String,
     description: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct EndpointsConfig {
     endpoints: Vec<Endpoint>,
 }
@@ -29,20 +31,45 @@ struct WebhookPayload {
 #[derive(Clone)]
 pub struct WebhookNotifier {
     client: Client,
-    endpoints: Vec<Endpoint>,
+    endpoints: Arc<RwLock<Vec<Endpoint>>>,
     max_retries: u32,
 }
 
 impl WebhookNotifier {
     pub fn new(max_retries: u32) -> Result<Self> {
-        let config = fs::read_to_string("endpoints.json")?;
-        let endpoints_config: EndpointsConfig = serde_json::from_str(&config)?;
+        let endpoints = if let Ok(config) = fs::read_to_string("endpoints.json") {
+            let endpoints_config: EndpointsConfig = serde_json::from_str(&config)?;
+            endpoints_config.endpoints
+        } else {
+            Vec::new()
+        };
         
         Ok(Self {
             client: Client::new(),
-            endpoints: endpoints_config.endpoints,
+            endpoints: Arc::new(RwLock::new(endpoints)),
             max_retries,
         })
+    }
+
+    pub async fn add_endpoint(&self, endpoint: Endpoint) -> Result<()> {
+        let mut endpoints = self.endpoints.write().await;
+        
+        endpoints.retain(|e| e.description != endpoint.description);
+        
+        endpoints.push(endpoint);
+        
+        self.save_endpoints().await?;
+        
+        Ok(())
+    }
+
+    async fn save_endpoints(&self) -> Result<()> {
+        let endpoints = self.endpoints.read().await;
+        let config = EndpointsConfig {
+            endpoints: endpoints.clone(),
+        };
+        fs::write("endpoints.json", serde_json::to_string_pretty(&config)?)?;
+        Ok(())
     }
 
     async fn send_webhook(&self, endpoint: &Endpoint, payload: &WebhookPayload) -> Result<()> {
@@ -106,7 +133,8 @@ impl WebhookNotifier {
             new_state: state.to_string(),
         };
 
-        let webhook_futures: Vec<_> = self.endpoints.iter()
+        let endpoints = self.endpoints.read().await;
+        let webhook_futures: Vec<_> = endpoints.iter()
             .map(|endpoint| {
                 info!("Sending webhook to {}: {}", endpoint.description, serde_json::to_string(&payload).unwrap());
                 self.send_webhook_with_retries(endpoint, &payload)

@@ -1,16 +1,4 @@
 {
     "endpoints": [
-        {
-            "url": "http://localhost:8080/webhook",
-            "description": "Local development endpoint"
-        },
-        {
-            "url": "https://api.example.com/notifications",
-            "description": "Production notification service"
-        },
-        {
-            "url": "https://webhook.site/your-unique-id",
-            "description": "Webhook testing service"
-        }
     ]
 } 

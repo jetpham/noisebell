@@ -3,8 +3,15 @@ mod webhook;
 
 use std::time::Duration;
 use std::fs;
+use std::sync::Arc;
 
 use anyhow::Result;
+use axum::{
+    routing::post,
+    Router,
+    Json,
+    extract::State,
+};
 use tracing::{error, info};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
@@ -12,8 +19,10 @@ use tracing_subscriber::filter::LevelFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    info!("creating logs directory");
     fs::create_dir_all("logs")?;
 
+    info!("initializing logging");
     let file_appender = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
         .filename_prefix("noisebell")
@@ -35,23 +44,26 @@ async fn main() -> Result<()> {
         .with(fmt::Layer::default().with_writer(non_blocking))
         .init();
 
-    info!("Starting noisebell...");
-
     const DEFAULT_GPIO_PIN: u8 = 17;
     const DEFAULT_WEBHOOK_RETRIES: u32 = 3;
+    const DEFAULT_SERVER_PORT: u16 = 8080;
 
-    let gpio_pin = std::env::var("GPIO_PIN")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(DEFAULT_GPIO_PIN);
+    info!("initializing webhook notifier");
+    let webhook_notifier = Arc::new(webhook::WebhookNotifier::new(DEFAULT_WEBHOOK_RETRIES)?);
 
-    let webhook_retries = std::env::var("WEBHOOK_RETRIES")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(DEFAULT_WEBHOOK_RETRIES);
+    info!("initializing gpio monitor");
+    let mut gpio_monitor = gpio::GpioMonitor::new(DEFAULT_GPIO_PIN, Duration::from_millis(100))?;
 
-    let webhook_notifier = webhook::WebhookNotifier::new(webhook_retries)?;
-    let mut gpio_monitor = gpio::GpioMonitor::new(gpio_pin, Duration::from_millis(100))?;
+    let app = Router::new()
+        .route("/endpoints", post(add_endpoint))
+        .with_state(webhook_notifier.clone());
+
+    let server_addr = format!("127.0.0.1:{}", DEFAULT_SERVER_PORT);
+    info!("Starting API server on http://{}", server_addr);
+    
+    let listener = tokio::net::TcpListener::bind(&server_addr).await?;
+    axum::serve(listener, app.into_make_service())
+        .await?;
 
     let callback = move |event: gpio::CircuitEvent| {
         info!("Circuit state changed: {:?}", event);
@@ -63,11 +75,23 @@ async fn main() -> Result<()> {
         });
     };
 
-    info!("starting gpio_monitor");
+    info!("starting GPIO monitor");
 
     if let Err(e) = gpio_monitor.monitor(callback).await {
         error!("GPIO monitoring error: {}", e);
     }
 
     Ok(())
+}
+
+async fn add_endpoint(
+    State(notifier): State<Arc<webhook::WebhookNotifier>>,
+    Json(endpoint): Json<webhook::Endpoint>,
+) -> Result<(), axum::http::StatusCode> {
+    notifier.add_endpoint(endpoint)
+        .await
+        .map_err(|e| {
+            error!("Failed to add endpoint: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
