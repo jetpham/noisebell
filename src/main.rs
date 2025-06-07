@@ -1,21 +1,14 @@
 mod gpio;
-mod webhook;
+mod discord;
 
-use std::time::Duration;
 use std::fs;
-use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
-use axum::{
-    routing::post,
-    Router,
-    Json,
-    extract::State,
-};
 use tracing::{error, info};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -31,7 +24,7 @@ async fn main() -> Result<()> {
         .build("logs")?;
 
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-    
+
     // Only show our logs and hide hyper logs
     let filter = tracing_subscriber::filter::Targets::new()
         .with_target("noisebell", LevelFilter::INFO)
@@ -44,37 +37,25 @@ async fn main() -> Result<()> {
         .with(fmt::Layer::default().with_writer(non_blocking))
         .init();
 
-    const DEFAULT_GPIO_PIN: u8 = 17;
-    const DEFAULT_WEBHOOK_RETRIES: u32 = 3;
-    const DEFAULT_SERVER_PORT: u16 = 8080;
+    info!("initializing Discord client");
+    let discord_client = discord::DiscordClient::new().await?;
 
-    info!("initializing webhook notifier");
-    let webhook_notifier = Arc::new(webhook::WebhookNotifier::new(DEFAULT_WEBHOOK_RETRIES)?);
+    const DEFAULT_GPIO_PIN: u8 = 17;
 
     info!("initializing gpio monitor");
     let mut gpio_monitor = gpio::GpioMonitor::new(DEFAULT_GPIO_PIN, Duration::from_millis(100))?;
 
-    let app = Router::new()
-        .route("/endpoints", post(add_endpoint))
-        .with_state(webhook_notifier.clone());
-
-    let server_addr = format!("127.0.0.1:{}", DEFAULT_SERVER_PORT);
-    info!("Starting API server on http://{}", server_addr);
-    
-    let server = tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(&server_addr).await?;
-        axum::serve(listener, app.into_make_service())
-            .await?;
-        Ok::<_, anyhow::Error>(())
-    });
+    let discord_client = std::sync::Arc::new(discord_client);
+    let discord_client_clone = discord_client.clone();
 
     let callback = move |event: gpio::CircuitEvent| {
         info!("Circuit state changed: {:?}", event);
-
-        let notifier = webhook_notifier.clone();
-
+        
+        let discord_client = discord_client_clone.clone();
         tokio::spawn(async move {
-            notifier.notify_all("circuit_state_change", event).await;
+            if let Err(e) = discord_client.send_circuit_event(&event).await {
+                error!("Failed to send Discord message: {}", e);
+            }
         });
     };
 
@@ -84,22 +65,5 @@ async fn main() -> Result<()> {
         error!("GPIO monitoring error: {}", e);
     }
 
-    // Wait for the server to complete (it shouldn't unless there's an error)
-    if let Err(e) = server.await? {
-        error!("Server error: {}", e);
-    }
-
     Ok(())
-}
-
-async fn add_endpoint(
-    State(notifier): State<Arc<webhook::WebhookNotifier>>,
-    Json(endpoint): Json<webhook::Endpoint>,
-) -> Result<(), axum::http::StatusCode> {
-    notifier.add_endpoint(endpoint)
-        .await
-        .map_err(|e| {
-            error!("Failed to add endpoint: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })
 }
