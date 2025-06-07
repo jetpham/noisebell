@@ -2,7 +2,7 @@ use std::env;
 use std::time::Instant;
 
 use anyhow::Result;
-use serenity::prelude::*;
+use serenity::all::{prelude::*, Color, CreateEmbed, CreateMessage};
 use serenity::model::id::ChannelId;
 use tracing::{info, error};
 
@@ -40,15 +40,67 @@ impl DiscordClient {
         let start = Instant::now();
         info!("Sending Discord message for circuit event: {:?}", event);
 
-        let message = format!("Circuit state changed: {:?}", event);
-        
-        if let Err(why) = self.channel_id.say(&self.client.http, message).await {
+        let embed = CreateEmbed::new()
+            .title(format!("Noisebridge is {}!", event))
+            .description(match event {
+                crate::gpio::CircuitEvent::Open => "It's time to start hacking.",
+                crate::gpio::CircuitEvent::Closed => "We'll see you again soon.",
+            })
+            .color(match event {
+                crate::gpio::CircuitEvent::Open => Color::new(0x00FF00),    // Red for open
+                crate::gpio::CircuitEvent::Closed => Color::new(0xFF0000),  // Green for closed
+            }).thumbnail(match event {
+                crate::gpio::CircuitEvent::Open => "https://www.noisebridge.net/images/7/7f/Open.png", // Image that says "Open"
+                crate::gpio::CircuitEvent::Closed => "https://www.noisebridge.net/images/c/c9/Closed.png", // Image that says "Closed"
+            });
+
+        if let Err(why) = self.channel_id.send_message(&self.client.http, CreateMessage::default().add_embed(embed)).await {
             error!("Error sending Discord message: {:?}", why);
             return Err(anyhow::anyhow!("Failed to send Discord message: {}", why));
         }
 
         let duration = start.elapsed();
         info!("Discord message sent successfully in {:?}", duration);
+        Ok(())
+    }
+    
+    pub async fn send_startup_message(&self) -> Result<()> {
+        let start = Instant::now();
+        info!("Sending Discord startup message");
+
+        let embed = CreateEmbed::new()
+            .title("Noisebell is starting up!")
+            .description("The Noisebell service is initializing and will begin monitoring the space status.")
+            .color(Color::new(0xFFA500))  // Orange for startup
+            .thumbnail("https://cats.com/wp-content/uploads/2024/07/Beautiful-red-cat-stretches-and-shows-tongue.jpg");
+
+        if let Err(why) = self.channel_id.send_message(&self.client.http, CreateMessage::default().add_embed(embed)).await {
+            error!("Error sending Discord startup message: {:?}", why);
+            return Err(anyhow::anyhow!("Failed to send Discord startup message: {}", why));
+        }
+
+        let duration = start.elapsed();
+        info!("Discord startup message sent successfully in {:?}", duration);
+        Ok(())
+    }
+
+    pub async fn send_shutdown_message(&self) -> Result<()> {
+        let start = Instant::now();
+        info!("Sending Discord shutdown message");
+
+        let embed = CreateEmbed::new()
+            .title("Noisebell is shutting down")
+            .description("The Noisebell service is stopping. Status updates won't go through")
+            .color(Color::new(0x800080))  // Purple for shutdown
+            .thumbnail("https://static.vecteezy.com/system/resources/thumbnails/050/619/685/large/a-laptop-computer-on-fire-on-a-desk-in-a-dark-room-video.jpg");
+
+        if let Err(why) = self.channel_id.send_message(&self.client.http, CreateMessage::default().add_embed(embed)).await {
+            error!("Error sending Discord shutdown message: {:?}", why);
+            return Err(anyhow::anyhow!("Failed to send Discord shutdown message: {}", why));
+        }
+
+        let duration = start.elapsed();
+        info!("Discord shutdown message sent successfully in {:?}", duration);
         Ok(())
     }
 } 

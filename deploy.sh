@@ -38,7 +38,10 @@ WantedBy=multi-user.target
 EOL
 
 echo "Copying to Raspberry Pi..."
-ssh noisebridge@noisebell.local "mkdir -p ~/noisebell"
+# Stop the service if it's running
+ssh noisebridge@noisebell.local "sudo systemctl stop noisebell || true"
+sleep 1
+# Copy files
 scp target/aarch64-unknown-linux-gnu/release/noisebell noisebridge@noisebell.local:~/noisebell/
 scp noisebell.service noisebridge@noisebell.local:~/noisebell/
 

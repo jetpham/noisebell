@@ -3,12 +3,29 @@ mod discord;
 
 use std::fs;
 use std::time::Duration;
+use std::sync::Arc;
 
 use anyhow::Result;
 use tracing::{error, info};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
+struct ShutdownGuard {
+    discord_client: Arc<discord::DiscordClient>,
+}
+
+impl Drop for ShutdownGuard {
+    fn drop(&mut self) {
+        info!("Shutdown guard triggered");
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            if let Err(e) = self.discord_client.send_shutdown_message().await {
+                error!("Failed to send shutdown message: {}", e);
+            }
+        });
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -39,18 +56,27 @@ async fn main() -> Result<()> {
 
     info!("initializing Discord client");
     let discord_client = discord::DiscordClient::new().await?;
+    let discord_client = Arc::new(discord_client);
+
+    // Create shutdown guard that will send message on any exit
+    let _guard = ShutdownGuard {
+        discord_client: Arc::clone(&discord_client),
+    };
+
+    discord_client.send_startup_message().await?;
 
     const DEFAULT_GPIO_PIN: u8 = 17;
 
     info!("initializing gpio monitor");
     let mut gpio_monitor = gpio::GpioMonitor::new(DEFAULT_GPIO_PIN, Duration::from_millis(100))?;
 
-    let discord_client = std::sync::Arc::new(discord_client);
-    let discord_client_clone = discord_client.clone();
+    // Send initial state
+    discord_client.clone().send_circuit_event(&gpio_monitor.get_current_state()).await?;
 
+    // Set up the callback for state changes
     let callback = move |event: gpio::CircuitEvent| {
-        info!("Circuit state changed: {:?}", event);
-        let discord_client = discord_client_clone.clone();
+        info!("Circuit state changed to: {:?}", event);
+        let discord_client = discord_client.clone();
         tokio::spawn(async move {
             if let Err(e) = discord_client.send_circuit_event(&event).await {
                 error!("Failed to send Discord message: {}", e);
@@ -58,10 +84,10 @@ async fn main() -> Result<()> {
         });
     };
 
-    info!("starting GPIO monitor");
-
+    // Start monitoring - this will block until an error occurs
     if let Err(e) = gpio_monitor.monitor(callback).await {
         error!("GPIO monitoring error: {}", e);
+        return Err(anyhow::anyhow!("GPIO monitoring failed"));
     }
 
     Ok(())
