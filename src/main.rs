@@ -13,6 +13,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 const DEFAULT_GPIO_PIN: u8 = 17;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 100;
+const DEFAULT_DEBOUNCE_DELAY_SECS: u64 = 5;
 const LOG_DIR: &str = "logs";
 const LOG_PREFIX: &str = "noisebell";
 const LOG_SUFFIX: &str = "log";
@@ -54,7 +55,8 @@ async fn main() -> Result<()> {
     info!("initializing gpio monitor");
     let mut gpio_monitor = gpio::GpioMonitor::new(
         DEFAULT_GPIO_PIN,
-        Duration::from_millis(DEFAULT_POLL_INTERVAL_MS)
+        Duration::from_millis(DEFAULT_POLL_INTERVAL_MS),
+        Duration::from_secs(DEFAULT_DEBOUNCE_DELAY_SECS)
     )?;
 
     // Set up the callback for state changes
