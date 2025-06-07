@@ -11,18 +11,25 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
+const DEFAULT_GPIO_PIN: u8 = 17;
+const DEFAULT_POLL_INTERVAL_MS: u64 = 100;
+const LOG_DIR: &str = "logs";
+const LOG_PREFIX: &str = "noisebell";
+const LOG_SUFFIX: &str = "log";
+const MAX_LOG_FILES: usize = 7;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     info!("creating logs directory");
-    fs::create_dir_all("logs")?;
+    fs::create_dir_all(LOG_DIR)?;
 
     info!("initializing logging");
     let file_appender = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
-        .filename_prefix("noisebell")
-        .filename_suffix("log")
-        .max_log_files(7)
-        .build("logs")?;
+        .filename_prefix(LOG_PREFIX)
+        .filename_suffix(LOG_SUFFIX)
+        .max_log_files(MAX_LOG_FILES)
+        .build(LOG_DIR)?;
 
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
@@ -44,13 +51,11 @@ async fn main() -> Result<()> {
 
     discord_client.send_startup_message().await?;
 
-    const DEFAULT_GPIO_PIN: u8 = 17;
-
     info!("initializing gpio monitor");
-    let mut gpio_monitor = gpio::GpioMonitor::new(DEFAULT_GPIO_PIN, Duration::from_millis(100))?;
-
-    // Send initial state
-    discord_client.clone().send_circuit_event(&gpio_monitor.get_current_state()).await?;
+    let mut gpio_monitor = gpio::GpioMonitor::new(
+        DEFAULT_GPIO_PIN,
+        Duration::from_millis(DEFAULT_POLL_INTERVAL_MS)
+    )?;
 
     // Set up the callback for state changes
     let callback = move |event: gpio::CircuitEvent| {

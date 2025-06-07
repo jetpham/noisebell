@@ -6,6 +6,10 @@ use serenity::all::{prelude::*, Color, CreateEmbed, CreateMessage};
 use serenity::model::id::ChannelId;
 use tracing::{info, error};
 
+const COLOR_OPEN: Color = Color::new(0x00FF00);    // Green for open
+const COLOR_CLOSED: Color = Color::new(0xFF0000);  // Red for closed
+const COLOR_STARTUP: Color = Color::new(0xFFA500); // Orange for startup
+
 pub struct DiscordClient {
     client: Client,
     channel_id: ChannelId,
@@ -47,11 +51,11 @@ impl DiscordClient {
                 crate::gpio::CircuitEvent::Closed => "We'll see you again soon.",
             })
             .color(match event {
-                crate::gpio::CircuitEvent::Open => Color::new(0x00FF00),    // Red for open
-                crate::gpio::CircuitEvent::Closed => Color::new(0xFF0000),  // Green for closed
+                crate::gpio::CircuitEvent::Open => COLOR_OPEN,
+                crate::gpio::CircuitEvent::Closed => COLOR_CLOSED,
             }).thumbnail(match event {
-                crate::gpio::CircuitEvent::Open => "https://www.noisebridge.net/images/7/7f/Open.png", // Image that says "Open"
-                crate::gpio::CircuitEvent::Closed => "https://www.noisebridge.net/images/c/c9/Closed.png", // Image that says "Closed"
+                crate::gpio::CircuitEvent::Open => "https://www.noisebridge.net/images/7/7f/Open.png",
+                crate::gpio::CircuitEvent::Closed => "https://www.noisebridge.net/images/c/c9/Closed.png",
             });
 
         if let Err(why) = self.channel_id.send_message(&self.client.http, CreateMessage::default().add_embed(embed)).await {
@@ -71,7 +75,7 @@ impl DiscordClient {
         let embed = CreateEmbed::new()
             .title("Noisebell is starting up!")
             .description("The Noisebell service is initializing and will begin monitoring the space status.")
-            .color(Color::new(0xFFA500))  // Orange for startup
+            .color(COLOR_STARTUP)
             .thumbnail("https://cats.com/wp-content/uploads/2024/07/Beautiful-red-cat-stretches-and-shows-tongue.jpg");
 
         if let Err(why) = self.channel_id.send_message(&self.client.http, CreateMessage::default().add_embed(embed)).await {
