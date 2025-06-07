@@ -12,7 +12,6 @@ use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 const DEFAULT_GPIO_PIN: u8 = 17;
-const DEFAULT_POLL_INTERVAL_MS: u64 = 100;
 const DEFAULT_DEBOUNCE_DELAY_SECS: u64 = 5;
 const LOG_DIR: &str = "logs";
 const LOG_PREFIX: &str = "noisebell";
@@ -55,7 +54,6 @@ async fn main() -> Result<()> {
     info!("initializing gpio monitor");
     let mut gpio_monitor = gpio::GpioMonitor::new(
         DEFAULT_GPIO_PIN,
-        Duration::from_millis(DEFAULT_POLL_INTERVAL_MS),
         Duration::from_secs(DEFAULT_DEBOUNCE_DELAY_SECS)
     )?;
 
@@ -71,7 +69,7 @@ async fn main() -> Result<()> {
     };
 
     // Start monitoring - this will block until an error occurs
-    if let Err(e) = gpio_monitor.monitor(callback).await {
+    if let Err(e) = gpio_monitor.monitor(callback) {
         error!("GPIO monitoring error: {}", e);
         return Err(anyhow::anyhow!("GPIO monitoring failed"));
     }
