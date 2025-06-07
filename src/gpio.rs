@@ -53,8 +53,8 @@ impl GpioMonitor {
 
     pub fn get_current_state(&self) -> CircuitEvent {
         match self.pin.read() {
-            Level::High => CircuitEvent::Open,
-            Level::Low => CircuitEvent::Closed,
+            Level::Low => CircuitEvent::Open,
+            Level::High => CircuitEvent::Closed,
         }
     }
 }
