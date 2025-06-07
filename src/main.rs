@@ -1,11 +1,12 @@
-mod gpio;
 mod discord;
+mod gpio;
 
 use std::fs;
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
+use tokio::sync::Mutex;
 use tracing::{error, info};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::filter::LevelFilter;
@@ -71,15 +72,48 @@ async fn main() -> Result<()> {
     let mut gpio_monitor = gpio::GpioMonitor::new(DEFAULT_GPIO_PIN, Duration::from_millis(100))?;
 
     // Send initial state
-    discord_client.clone().send_circuit_event(&gpio_monitor.get_current_state()).await?;
+    discord_client
+        .clone()
+        .send_circuit_event(&gpio_monitor.get_current_state())
+        .await?;
 
-    // Set up the callback for state changes
+    let debounce_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> =
+        Arc::new(Mutex::new(None));
+    let debounce_duration = Duration::from_secs(5);
+
     let callback = move |event: gpio::CircuitEvent| {
         info!("Circuit state changed to: {:?}", event);
         let discord_client = discord_client.clone();
+        let debounce_handle = debounce_handle.clone();
+
         tokio::spawn(async move {
-            if let Err(e) = discord_client.send_circuit_event(&event).await {
-                error!("Failed to send Discord message: {}", e);
+            // Cancel any existing debounce timer
+            {
+                let mut handle_guard = debounce_handle.lock().await;
+                if let Some(handle) = handle_guard.take() {
+                    handle.abort();
+                }
+            }
+
+            // Start new debounce timer
+            let new_handle = tokio::spawn({
+                let discord_client = discord_client.clone();
+                async move {
+                    tokio::time::sleep(debounce_duration).await;
+                    info!(
+                        "Debounce period elapsed, sending Discord message for: {:?}",
+                        event
+                    );
+                    if let Err(e) = discord_client.send_circuit_event(&event).await {
+                        error!("Failed to send Discord message: {}", e);
+                    }
+                }
+            });
+
+            // Store the new handle
+            {
+                let mut handle_guard = debounce_handle.lock().await;
+                *handle_guard = Some(new_handle);
             }
         });
     };
