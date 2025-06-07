@@ -83,24 +83,4 @@ impl DiscordClient {
         info!("Discord startup message sent successfully in {:?}", duration);
         Ok(())
     }
-
-    pub async fn send_shutdown_message(&self) -> Result<()> {
-        let start = Instant::now();
-        info!("Sending Discord shutdown message");
-
-        let embed = CreateEmbed::new()
-            .title("Noisebell is shutting down")
-            .description("The Noisebell service is stopping. Status updates won't go through")
-            .color(Color::new(0x800080))  // Purple for shutdown
-            .thumbnail("https://static.vecteezy.com/system/resources/thumbnails/050/619/685/large/a-laptop-computer-on-fire-on-a-desk-in-a-dark-room-video.jpg");
-
-        if let Err(why) = self.channel_id.send_message(&self.client.http, CreateMessage::default().add_embed(embed)).await {
-            error!("Error sending Discord shutdown message: {:?}", why);
-            return Err(anyhow::anyhow!("Failed to send Discord shutdown message: {}", why));
-        }
-
-        let duration = start.elapsed();
-        info!("Discord shutdown message sent successfully in {:?}", duration);
-        Ok(())
-    }
 } 

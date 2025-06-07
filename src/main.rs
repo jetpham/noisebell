@@ -11,22 +11,6 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-struct ShutdownGuard {
-    discord_client: Arc<discord::DiscordClient>,
-}
-
-impl Drop for ShutdownGuard {
-    fn drop(&mut self) {
-        info!("Shutdown guard triggered");
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        runtime.block_on(async {
-            if let Err(e) = self.discord_client.send_shutdown_message().await {
-                error!("Failed to send shutdown message: {}", e);
-            }
-        });
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     info!("creating logs directory");
@@ -57,11 +41,6 @@ async fn main() -> Result<()> {
     info!("initializing Discord client");
     let discord_client = discord::DiscordClient::new().await?;
     let discord_client = Arc::new(discord_client);
-
-    // Create shutdown guard that will send message on any exit
-    let _guard = ShutdownGuard {
-        discord_client: Arc::clone(&discord_client),
-    };
 
     discord_client.send_startup_message().await?;
 
