@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use anyhow::Result;
 use serenity::prelude::*;
-use serenity::model::channel::ChannelId;
+use serenity::model::id::ChannelId;
 use tracing::{info, error};
 
 pub struct DiscordClient {
@@ -32,7 +32,7 @@ impl DiscordClient {
 
         Ok(Self {
             client,
-            channel_id: ChannelId(channel_id),
+            channel_id: ChannelId::new(channel_id),
         })
     }
 

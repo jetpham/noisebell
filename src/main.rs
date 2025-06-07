@@ -50,7 +50,6 @@ async fn main() -> Result<()> {
 
     let callback = move |event: gpio::CircuitEvent| {
         info!("Circuit state changed: {:?}", event);
-        
         let discord_client = discord_client_clone.clone();
         tokio::spawn(async move {
             if let Err(e) = discord_client.send_circuit_event(&event).await {

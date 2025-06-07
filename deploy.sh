@@ -6,12 +6,50 @@ set -e
 echo "Building for Raspberry Pi..."
 cross build --release --target aarch64-unknown-linux-gnu
 
+# Check if Discord credentials are already set
+if [ -z "$DISCORD_TOKEN" ]; then
+    echo "Please enter your Discord bot token:"
+    read -s DISCORD_TOKEN
+fi
+
+if [ -z "$DISCORD_CHANNEL_ID" ]; then
+    echo "Please enter your Discord channel ID:"
+    read -s DISCORD_CHANNEL_ID
+fi
+
+# Create service file with credentials
+cat > noisebell.service << EOL
+[Unit]
+Description=Noisebell Discord Notification Service
+After=network.target
+
+[Service]
+Type=simple
+User=noisebridge
+WorkingDirectory=/home/noisebridge/noisebell
+Environment=DISCORD_TOKEN=${DISCORD_TOKEN}
+Environment=DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
+ExecStart=/home/noisebridge/noisebell/noisebell
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOL
+
 echo "Copying to Raspberry Pi..."
 ssh noisebridge@noisebell.local "mkdir -p ~/noisebell"
 scp target/aarch64-unknown-linux-gnu/release/noisebell noisebridge@noisebell.local:~/noisebell/
-scp endpoints.json noisebridge@noisebell.local:/home/noisebridge/noisebell/endpoints.json
+scp noisebell.service noisebridge@noisebell.local:~/noisebell/
 
-echo "Setting permissions"
-ssh noisebridge@noisebell.local "chmod +x ~/noisebell/noisebell"
+echo "Setting up service..."
+ssh noisebridge@noisebell.local "sudo cp ~/noisebell/noisebell.service /etc/systemd/system/ && \
+    sudo systemctl daemon-reload && \
+    sudo systemctl enable noisebell && \
+    sudo systemctl restart noisebell"
 
-echo "Deployment complete!" 
+# Clean up local service file
+rm noisebell.service
+
+echo "Deployment complete!"
+echo "You can check the service status with: ssh noisebridge@noisebell.local 'sudo systemctl status noisebell'" 
