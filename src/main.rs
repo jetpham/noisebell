@@ -61,9 +61,12 @@ async fn main() -> Result<()> {
     let server_addr = format!("127.0.0.1:{}", DEFAULT_SERVER_PORT);
     info!("Starting API server on http://{}", server_addr);
     
-    let listener = tokio::net::TcpListener::bind(&server_addr).await?;
-    axum::serve(listener, app.into_make_service())
-        .await?;
+    let server = tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind(&server_addr).await?;
+        axum::serve(listener, app.into_make_service())
+            .await?;
+        Ok::<_, anyhow::Error>(())
+    });
 
     let callback = move |event: gpio::CircuitEvent| {
         info!("Circuit state changed: {:?}", event);
@@ -79,6 +82,11 @@ async fn main() -> Result<()> {
 
     if let Err(e) = gpio_monitor.monitor(callback).await {
         error!("GPIO monitoring error: {}", e);
+    }
+
+    // Wait for the server to complete (it shouldn't unless there's an error)
+    if let Err(e) = server.await? {
+        error!("Server error: {}", e);
     }
 
     Ok(())
