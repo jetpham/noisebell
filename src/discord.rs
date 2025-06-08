@@ -8,83 +8,77 @@ use tracing::{info, error};
 
 const COLOR_OPEN: Color = Color::new(0x00FF00);    // Green for open
 const COLOR_CLOSED: Color = Color::new(0xFF0000);  // Red for closed
-const COLOR_STARTUP: Color = Color::new(0xFFA500); // Orange for startup
+
+#[derive(Debug)]
+pub enum SpaceEvent {
+    Open,
+    Closed,
+    Initializing,
+}
 
 pub struct DiscordClient {
     client: Client,
-    channel_id: ChannelId,
 }
 
 impl DiscordClient {
     pub async fn new() -> Result<Self> {
         let token = env::var("DISCORD_TOKEN").expect("Expected DISCORD_TOKEN in environment");
         
-        // Validate token format
         if let Err(e) = serenity::utils::token::validate(&token) {
             return Err(anyhow::anyhow!("Invalid Discord token format: {}", e));
         }
 
-        let channel_id = env::var("DISCORD_CHANNEL_ID")
-            .expect("Expected DISCORD_CHANNEL_ID in environment")
-            .parse::<u64>()?;
-
         let intents = GatewayIntents::GUILD_MESSAGES;
-
         let client = Client::builder(&token, intents)
             .await
             .expect("Error creating Discord client");
 
-        Ok(Self {
-            client,
-            channel_id: ChannelId::new(channel_id),
-        })
+        Ok(Self { client })
     }
 
-    pub async fn send_circuit_event(&self, event: &crate::gpio::CircuitEvent) -> Result<()> {
+    pub async fn handle_event(&self, event: SpaceEvent) -> Result<()> {
         let start = Instant::now();
-        info!("Sending Discord message for circuit event: {:?}", event);
+        info!("Handling Discord event: {:?}", event);
 
-        let embed = CreateEmbed::new()
-            .title(format!("Noisebridge is {}!", event))
-            .description(match event {
-                crate::gpio::CircuitEvent::Open => "It's time to start hacking.",
-                crate::gpio::CircuitEvent::Closed => "We'll see you again soon.",
-            })
-            .color(match event {
-                crate::gpio::CircuitEvent::Open => COLOR_OPEN,
-                crate::gpio::CircuitEvent::Closed => COLOR_CLOSED,
-            }).thumbnail(match event {
-                crate::gpio::CircuitEvent::Open => "https://www.noisebridge.net/images/7/7f/Open.png",
-                crate::gpio::CircuitEvent::Closed => "https://www.noisebridge.net/images/c/c9/Closed.png",
-            });
-
-        if let Err(why) = self.channel_id.send_message(&self.client.http, CreateMessage::default().add_embed(embed)).await {
-            error!("Error sending Discord message: {:?}", why);
-            return Err(anyhow::anyhow!("Failed to send Discord message: {}", why));
-        }
+        send_discord_message(&self.client, &event).await?;
 
         let duration = start.elapsed();
-        info!("Discord message sent successfully in {:?}", duration);
+        info!("Discord event handled successfully in {:?}", duration);
         Ok(())
     }
-    
-    pub async fn send_startup_message(&self) -> Result<()> {
-        let start = Instant::now();
-        info!("Sending Discord startup message");
+}
 
-        let embed = CreateEmbed::new()
-            .title("Noisebell is starting up!")
-            .description("The Noisebell service is initializing and will begin monitoring the space status.")
-            .color(COLOR_STARTUP)
-            .thumbnail("https://cats.com/wp-content/uploads/2024/07/Beautiful-red-cat-stretches-and-shows-tongue.jpg");
+async fn send_discord_message(client: &Client, event: &SpaceEvent) -> Result<()> {
+    let (title, description, color, thumbnail) = match event {
+        SpaceEvent::Open => (
+            "Noisebridge is Open!",
+            "It's time to start hacking.",
+            COLOR_OPEN,
+            "https://www.noisebridge.net/images/7/7f/Open.png"
+        ),
+        SpaceEvent::Closed => (
+            "Noisebridge is Closed!",
+            "We'll see you again soon.",
+            COLOR_CLOSED,
+            "https://www.noisebridge.net/images/c/c9/Closed.png"
+        ),
+        SpaceEvent::Initializing => return Ok(()), // Don't send message for initialization
+    };
 
-        if let Err(why) = self.channel_id.send_message(&self.client.http, CreateMessage::default().add_embed(embed)).await {
-            error!("Error sending Discord startup message: {:?}", why);
-            return Err(anyhow::anyhow!("Failed to send Discord startup message: {}", why));
-        }
+    let channel_id = env::var("DISCORD_CHANNEL_ID")
+        .expect("Expected DISCORD_CHANNEL_ID in environment")
+        .parse::<u64>()?;
 
-        let duration = start.elapsed();
-        info!("Discord startup message sent successfully in {:?}", duration);
-        Ok(())
+    let embed = CreateEmbed::new()
+        .title(title)
+        .description(description)
+        .color(color)
+        .thumbnail(thumbnail);
+
+    if let Err(why) = ChannelId::new(channel_id).send_message(&client.http, CreateMessage::default().add_embed(embed)).await {
+        error!("Error sending Discord message: {:?}", why);
+        return Err(anyhow::anyhow!("Failed to send Discord message: {}", why));
     }
+
+    Ok(())
 } 

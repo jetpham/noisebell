@@ -1,22 +1,14 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::fmt;
 use serde::{Serialize, Deserialize};
 
 use anyhow::{Result, Context};
-use rppal::gpio::{Gpio, InputPin, Level};
+use rppal::gpio::{Gpio, InputPin, Level, Trigger};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CircuitEvent {
     Open,
     Closed,
-}
-
-#[derive(Debug, PartialEq)]
-enum FsmState {
-    Idle,
-    DebouncingHigh,
-    High,
-    DebouncingLow,
 }
 
 impl fmt::Display for CircuitEvent {
@@ -30,14 +22,11 @@ impl fmt::Display for CircuitEvent {
 
 pub struct GpioMonitor {
     pin: InputPin,
-    poll_interval: Duration,
     debounce_delay: Duration,
-    state: FsmState,
-    last_potential_transition_time: Instant,
 }
 
 impl GpioMonitor {
-    pub fn new(pin_number: u8, poll_interval: Duration, debounce_delay: Duration) -> Result<Self> {
+    pub fn new(pin_number: u8, debounce_delay: Duration) -> Result<Self> {
         let gpio = Gpio::new()
             .context("Failed to initialize GPIO")?;
         let pin = gpio.get(pin_number)
@@ -46,59 +35,30 @@ impl GpioMonitor {
 
         Ok(Self { 
             pin, 
-            poll_interval,
             debounce_delay,
-            state: FsmState::Idle,
-            last_potential_transition_time: Instant::now(),
         })
     }
 
-    pub async fn monitor<F>(&mut self, mut callback: F) -> Result<()>
+    pub fn monitor<F>(&mut self, mut callback: F) -> Result<()>
     where
         F: FnMut(CircuitEvent) + Send + 'static,
     {
-        loop {
-            let current_switch_reading = self.get_current_state() == CircuitEvent::Closed;
-            let time_since_last_change = self.last_potential_transition_time.elapsed();
+        self.pin.set_async_interrupt(
+            Trigger::Both,
+            Some(self.debounce_delay),
+            move |event| {
+                match event.trigger {
+                    Trigger::RisingEdge => callback(CircuitEvent::Closed),
+                    Trigger::FallingEdge => callback(CircuitEvent::Open),
+                    _ => (), // Ignore other triggers
+                }
+            },
+        )?;
 
-            match self.state {
-                FsmState::Idle => {
-                    if current_switch_reading {
-                        self.state = FsmState::DebouncingHigh;
-                        self.last_potential_transition_time = Instant::now();
-                    }
-                }
-                
-                FsmState::DebouncingHigh => {
-                    if !current_switch_reading {
-                        self.state = FsmState::Idle;
-                    } else if time_since_last_change >= self.debounce_delay {
-                        self.state = FsmState::High;
-                        callback(CircuitEvent::Closed);
-                    }
-                }
-                
-                FsmState::High => {
-                    if !current_switch_reading {
-                        self.state = FsmState::DebouncingLow;
-                        self.last_potential_transition_time = Instant::now();
-                    }
-                }
-                
-                FsmState::DebouncingLow => {
-                    if current_switch_reading {
-                        self.state = FsmState::High;
-                    } else if time_since_last_change >= self.debounce_delay {
-                        self.state = FsmState::Idle;
-                        callback(CircuitEvent::Open);
-                    }
-                }
-            }
-
-            tokio::time::sleep(self.poll_interval).await;
-        }
+        Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get_current_state(&self) -> CircuitEvent {
         match self.pin.read() {
             Level::Low => CircuitEvent::Open,

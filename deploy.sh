@@ -26,10 +26,10 @@ After=network.target
 [Service]
 Type=simple
 User=noisebridge
-WorkingDirectory=/home/noisebridge/noisebell
+WorkingDirectory=/home/noisebridge
 Environment=DISCORD_TOKEN=${DISCORD_TOKEN}
 Environment=DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
-ExecStart=/home/noisebridge/noisebell/noisebell
+ExecStart=/home/noisebridge/noisebell
 Restart=on-failure
 RestartSec=10
 
@@ -39,12 +39,12 @@ EOL
 
 echo "Copying to Raspberry Pi..."
 # Copy files
-ssh noisebridge@noisebell.local "mkdir -p ~/noisebell" && scp target/aarch64-unknown-linux-gnu/release/noisebell noisebridge@noisebell.local:~/noisebell/
-scp noisebell.service noisebridge@noisebell.local:~/noisebell/
+ scp target/aarch64-unknown-linux-gnu/release/noisebell noisebridge@noisebell.local:~/
+scp noisebell.service noisebridge@noisebell.local:~/
 
 echo "Setting up service..."
 # Deploy service
-ssh noisebridge@noisebell.local "sudo cp ~/noisebell/noisebell.service /etc/systemd/system/ && \
+ssh noisebridge@noisebell.local "sudo cp ~/noisebell.service /etc/systemd/system/ && \
     sudo systemctl daemon-reload && \
     sudo systemctl enable noisebell && \
     sudo systemctl restart noisebell"
