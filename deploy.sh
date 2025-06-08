@@ -38,13 +38,17 @@ WantedBy=multi-user.target
 EOL
 
 echo "Copying to Raspberry Pi..."
-# Copy files
- scp target/aarch64-unknown-linux-gnu/release/noisebell noisebridge@noisebell.local:~/
-scp noisebell.service noisebridge@noisebell.local:~/
+# Debug remote directory status
+ssh noisebridge@noisebell.local "pwd && ls -la ~/ && echo 'Directory permissions:' && stat -c '%A %a %n' ~/"
+# Remove existing files
+ssh noisebridge@noisebell.local "rm -f /home/noisebridge/noisebell /home/noisebridge/noisebell.service"
+# Copy files with absolute paths
+scp -v target/aarch64-unknown-linux-gnu/release/noisebell noisebridge@noisebell.local:/home/noisebridge/noisebell
+scp -v noisebell.service noisebridge@noisebell.local:/home/noisebridge/noisebell.service
 
 echo "Setting up service..."
 # Deploy service
-ssh noisebridge@noisebell.local "sudo cp ~/noisebell.service /etc/systemd/system/ && \
+ssh noisebridge@noisebell.local "sudo cp /home/noisebridge/noisebell.service /etc/systemd/system/ && \
     sudo systemctl daemon-reload && \
     sudo systemctl enable noisebell && \
     sudo systemctl restart noisebell"

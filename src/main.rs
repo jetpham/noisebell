@@ -27,11 +27,14 @@ async fn main() -> Result<()> {
         Duration::from_secs(DEFAULT_DEBOUNCE_DELAY_SECS)
     )?;
 
+    // Get a handle to the current runtime
+    let runtime = tokio::runtime::Handle::current();
+
     // Set up the callback for state changes
     let callback = move |event: gpio::CircuitEvent| {
         info!("Circuit state changed to: {:?}", event);
         let discord_client = discord_client.clone();
-        tokio::spawn(async move {
+        runtime.spawn(async move {
             let space_event = match event {
                 gpio::CircuitEvent::Open => discord::SpaceEvent::Open,
                 gpio::CircuitEvent::Closed => discord::SpaceEvent::Closed,
