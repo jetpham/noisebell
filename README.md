@@ -7,12 +7,14 @@ This is build by [Jet Pham][jetpham] to be used at Noisebridge to replace their 
 ## Features
 
 - GPIO circuit monitoring with configurable pin
-- Webhook notifications with retry mechanism
+- Webhook notifications with retry mechanism and exponential backoff
 - REST API for managing webhook endpoints
 - API endpoints for actively polling status and health
 - Daily rotating log files
-- Cross-compilation support for Raspberry Pi deploymentk
-- Software Deboucing to prevent noisy switch detection
+- Cross-compilation support for Raspberry Pi deployment
+- Software debouncing to prevent noisy switch detection
+- Concurrent webhook delivery for improved performance
+- Comprehensive logging and error reporting
 
 ## How it works
 
@@ -22,7 +24,15 @@ In this service, we manage two systems that are a source of truth for the status
 
 ### GPIO and Physical Tech
 
-We interact directly over a [GPIO pin in a pull-up configuration][gpio-pullup] to read whether a circuit has been closed with a switch. This is an extremely simple circuit that will internally call a callback function and send out the webhooks when the state of the circuit changes
+We interact directly over a [GPIO pin in a pull-up configuration][gpio-pullup] to read whether a circuit has been closed with a switch. This is an extremely simple circuit that will internally call a callback function and send out HTTP POST requests to all registered webhook endpoints when the state of the circuit changes.
+
+When a state change is detected, the system:
+
+1. Logs the circuit state change
+2. Retrieves all registered webhook endpoints
+3. Sends HTTP POST requests concurrently to all endpoints
+4. Implements retry logic with exponential backoff (up to 3 attempts)
+5. Reports success/failure statistics in the logs
 
 <details>
 <summary>Debouncing</summary>
@@ -43,9 +53,6 @@ The service exposes a REST API for monitoring and managing webhooks. All endpoin
 
 #### Webhook Management
 
-> [!CAUTION]
-> The webhook management endpoints shown below are examples and not yet implemented.
-
 - `GET /webhooks` - List all configured webhooks
 
   ```json
@@ -55,7 +62,7 @@ The service exposes a REST API for monitoring and managing webhooks. All endpoin
       "webhooks": [
         {
           "url": "https://example.com/webhook",
-          "enabled": true
+          "created_at": "2025-01-11T10:30:00Z"
         }
       ]
     }
@@ -64,39 +71,45 @@ The service exposes a REST API for monitoring and managing webhooks. All endpoin
 
 - `POST /webhooks` - Add a new webhook
 
+  Request body:
+
+  ```json
+  {
+    "url": "https://example.com/webhook"
+  }
+  ```
+
+  Response:
+
   ```json
   {
     "status": "success",
     "message": "Webhook added successfully",
     "data": {
-      // Your webhook configuration
+      "url": "https://example.com/webhook",
+      "created_at": "2025-01-11T10:30:00Z"
     }
   }
   ```
+  
+#### Webhook Payload Format
 
-- `PUT /webhooks` - Update an existing webhook
+When a circuit state change is detected, the following JSON payload is sent to all registered webhook endpoints:
 
-  ```json
-  {
-    "status": "success",
-    "message": "Webhook updated successfully",
-    "data": {
-      // Updated webhook configuration
-    }
-  }
-  ```
+```json
+{
+  "event": "open", // or "closed"
+  "timestamp": "2025-01-11T10:30:00Z",
+  "source": "noisebell"
+}
+```
 
-- `DELETE /webhooks` - Remove a webhook
+The webhook delivery includes:
 
-  ```json
-  {
-    "status": "success",
-    "message": "Webhook deleted successfully",
-    "data": {
-      // Deleted webhook configuration
-    }
-  }
-  ```
+- **Retry Logic**: Up to 3 attempts with exponential backoff (1s, 2s, 4s delays)
+- **Timeout**: 10-second timeout per request
+- **Concurrent Delivery**: All webhooks are sent simultaneously
+- **Error Reporting**: Failed webhooks are logged with specific URLs and error details
 
 #### Status Endpoints
 
@@ -169,7 +182,8 @@ The health endpoint provides detailed system metrics including:
 
 - Rust toolchain (Install [Rust][rust-install])
 - Raspberry Pi (tested on [RP02W][rp02w])
-- `cross` (Install [Cross][cross-install])
+- `cross` for cross-compilation (Install [Cross][cross-install])
+- Internet connectivity (wifi for the rp02w)
 
 ### Deployment
 
@@ -183,7 +197,7 @@ This will:
 
 - Cross-compile the project for `aarch64`
 - Copy the binary and configuration to your Raspberry Pi
-- Chmod the binary
+- Create and install a systemd service
 - Restart the [`systemd`][systemd] service
 
 ### Configuration
@@ -210,6 +224,11 @@ To modify these settings:
 - `LOG_PREFIX`: Prefix for log filenames (default: "noisebell")
 - `LOG_SUFFIX`: Suffix for log filenames (default: "log")
 - `MAX_LOG_FILES`: Maximum number of log files to keep (default: 7)
+
+#### Webhook Settings
+
+- `WEBHOOK_TIMEOUT_SECS`: HTTP request timeout in seconds (default: 10)
+- `MAX_RETRIES`: Maximum number of retry attempts for failed webhooks (default: 3)
 
 [jetpham]: https://jetpham.com/
 [gpio-pullup]: https://raspberrypi.stackexchange.com/questions/4569/what-is-a-pull-up-resistor-what-does-it-do-and-why-is-it-needed

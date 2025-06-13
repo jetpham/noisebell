@@ -2,6 +2,7 @@ mod logging;
 mod api;
 mod storage;
 mod monitor;
+mod webhook_sender;
 
 use std::{fmt, time::Duration, sync::Arc};
 use tokio::sync::RwLock;
@@ -51,10 +52,20 @@ async fn main() -> Result<()> {
 
     let monitor_for_task = shared_monitor.clone();
     
-    let callback = Box::new(move |event: StatusEvent| {
-        info!("Circuit state changed to: {:?}", event);
-        
-    });
+    let callback = {
+        let storage = shared_storage.clone();
+        Box::new(move |event: StatusEvent| {
+            info!("Circuit state changed to: {:?}", event);
+            
+            // Send webhooks asynchronously
+            let storage = storage.clone();
+            tokio::spawn(async move {
+                if let Err(e) = webhook_sender::send_webhooks(&storage, event).await {
+                    error!("Failed to send webhooks: {}", e);
+                }
+            });
+        })
+    };
 
     let monitor_handle = tokio::spawn(async move {
         if let Err(e) = monitor_for_task.write().await.monitor(callback) {
