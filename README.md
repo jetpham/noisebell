@@ -1,4 +1,4 @@
-# <img src="media/noisebell%20logo.png" width="100" alt="Noisebell Logo" style="vertical-align: middle; margin-right: 20px;"> Noisebell
+# <img src="media/noisebell%20logo.svg" width="100" alt="Noisebell Logo" style="vertical-align: middle; margin-right: 20px;"> Noisebell
 
 A switch monitoring system that detects circuit state changes via GPIO and sends webhook notifications to configured endpoints.
 

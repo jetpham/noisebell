@@ -2,9 +2,11 @@ mod logging;
 mod api;
 mod storage;
 mod monitor;
+mod gpio_monitor;
+mod web_monitor;
 mod webhook_sender;
 
-use std::{fmt, time::Duration, sync::Arc};
+use std::{fmt, time::Duration, sync::Arc, env};
 use tokio::sync::RwLock;
 
 use anyhow::Result;
@@ -14,6 +16,7 @@ use tracing::{error, info};
 const DEFAULT_GPIO_PIN: u8 = 17;
 const DEFAULT_DEBOUNCE_DELAY_SECS: u64 = 5;
 const DEFAULT_API_PORT: u16 = 3000;
+const DEFAULT_WEB_MONITOR_PORT: u16 = 8080;
 
 // Shared state types
 pub type SharedMonitor = Arc<RwLock<Box<dyn monitor::Monitor>>>;
@@ -42,10 +45,19 @@ async fn main() -> Result<()> {
     let storage = storage::Storage::new();
     let shared_storage: SharedStorage = Arc::new(storage);
 
-    info!("initializing monitor");
+    // Check environment variable for monitor type
+    let monitor_type = env::var("MONITOR_TYPE").unwrap_or_else(|_| "gpio".to_string());
+    let web_monitor_port = env::var("WEB_MONITOR_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_WEB_MONITOR_PORT);
+
+    info!("initializing {} monitor", monitor_type);
     let monitor = monitor::create_monitor(
+        &monitor_type,
         DEFAULT_GPIO_PIN,
         Duration::from_secs(DEFAULT_DEBOUNCE_DELAY_SECS),
+        Some(web_monitor_port),
     )?;
 
     let shared_monitor: SharedMonitor = Arc::new(RwLock::new(monitor));
@@ -79,6 +91,9 @@ async fn main() -> Result<()> {
         }
     });
 
+    if monitor_type == "web" {
+        info!("Web monitor UI available at: http://localhost:{}", web_monitor_port);
+    }
     info!("Monitor and API server started.");
 
     let _ = tokio::join!(monitor_handle, api_handle);
