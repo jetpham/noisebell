@@ -1,6 +1,6 @@
 use axum::{
     response::IntoResponse,
-    extract::State,
+    extract::{State, Request},
     Json,
 };
 use serde_json::json;
@@ -9,11 +9,12 @@ use crate::api::AppState;
 
 #[instrument(skip(state))]
 pub async fn get_status(
-    State(state): State<AppState>
+    State(state): State<AppState>,
+    request: Request,
 ) -> impl IntoResponse {
-    info!("Received status request");
+    let uri = request.uri().clone();
     let status = state.monitor.read().await.get_current_state();
-    info!("Current state: {}", status);
+    info!("Received status request at {} - Current state: {}", uri, status);
     
     Json(json!({
         "status": "success",

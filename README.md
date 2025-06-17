@@ -91,6 +91,24 @@ The service exposes a REST API for monitoring and managing webhooks. All endpoin
     }
   }
   ```
+
+  Error Response (when webhook already exists):
+
+  ```json
+  {
+    "status": "error",
+    "message": "Webhook endpoint already exists: https://example.com/webhook"
+  }
+  ```
+
+  Error Response (when URL is invalid):
+
+  ```json
+  {
+    "status": "error",
+    "message": "Invalid URL format: not-a-valid-url"
+  }
+  ```
   
 #### Webhook Payload Format
 

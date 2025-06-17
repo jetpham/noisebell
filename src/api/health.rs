@@ -1,5 +1,6 @@
 use axum::response::IntoResponse;
 use axum::Json;
+use axum::extract::Request;
 use serde_json::json;
 use std::process::Command;
 use regex::Regex;
@@ -33,8 +34,8 @@ fn calculate_uptime(start_timestamp: &str) -> String {
 }
 
 #[instrument]
-pub async fn get_health() -> impl IntoResponse {
-    info!("Received health check request");
+pub async fn get_health(request: Request) -> impl IntoResponse {
+    let uri = request.uri().clone();
     let result = match Command::new("systemctl")
         .args(["show", "noisebell"])
         .output()
@@ -89,14 +90,14 @@ pub async fn get_health() -> impl IntoResponse {
                     }
                 }
                 
-                info!("Health check successful");
+                info!("Health check successful at {} - Service info: {:?}", uri, service_info);
                 json!({
                     "status": "success",
                     "data": service_info
                 })
             } else {
                 let error_msg = String::from_utf8_lossy(&output.stderr).to_string();
-                error!("Health check failed: {}", error_msg);
+                error!("Health check failed at {} - Error: {}", uri, error_msg);
                 json!({
                     "status": "error",
                     "error": error_msg
@@ -104,7 +105,7 @@ pub async fn get_health() -> impl IntoResponse {
             }
         }
         Err(e) => {
-            error!("Failed to execute systemctl command: {}", e);
+            error!("Health check failed at {} - Failed to execute systemctl command: {}", uri, e);
             json!({
                 "status": "error",
                 "error": "Failed to execute systemctl command"

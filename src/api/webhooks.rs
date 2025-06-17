@@ -1,12 +1,14 @@
 use axum::{
     response::IntoResponse,
-    extract::State,
+    extract::{State, Request},
     Json,
+    http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{info, instrument};
 use crate::api::AppState;
+use crate::storage::WebhookError;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebhookRequest {
@@ -15,9 +17,11 @@ pub struct WebhookRequest {
 
 #[instrument(skip(state))]
 pub async fn get_webhook(
-    State(state): State<AppState>
+    State(state): State<AppState>,
+    request: Request,
 ) -> impl IntoResponse {
-    info!("Received webhook list request");
+    let uri = request.uri().clone();
+    info!("Received webhook list request at {}", uri);
     let webhooks = state.storage.get_webhooks().await;
     info!("Found {} webhooks", webhooks.len());
     Json(json!({
@@ -34,11 +38,28 @@ pub async fn post_webhook(
     Json(payload): Json<WebhookRequest>,
 ) -> impl IntoResponse {
     info!("Received webhook registration request");
-    let webhook = state.storage.add_webhook(&payload.url).await;
-    info!("Successfully registered webhook");
-    Json(json!({
-        "status": "success",
-        "message": "Webhook added successfully",
-        "data": webhook
-    })).into_response()
+    match state.storage.add_webhook(&payload.url).await {
+        Ok(webhook) => {
+            info!("Successfully registered webhook");
+            Json(json!({
+                "status": "success",
+                "message": "Webhook added successfully",
+                "data": webhook
+            })).into_response()
+        },
+        Err(WebhookError::DuplicateUrl) => {
+            info!("Failed to register webhook: duplicate URL");
+            (StatusCode::CONFLICT, Json(json!({
+                "status": "error",
+                "message": format!("Webhook endpoint already exists: {}", payload.url)
+            }))).into_response()
+        },
+        Err(WebhookError::InvalidUrl) => {
+            info!("Failed to register webhook: invalid URL");
+            (StatusCode::BAD_REQUEST, Json(json!({
+                "status": "error",
+                "message": format!("Invalid URL format: {}", payload.url)
+            }))).into_response()
+        }
+    }
 } 
