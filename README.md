@@ -203,6 +203,18 @@ The health endpoint provides detailed system metrics including:
 - `cross` for cross-compilation (Install [Cross][cross-install])
 - Internet connectivity (wifi for the rp02w)
 
+### Local Development (Web Monitor)
+
+For local development and testing, you can run the web-based monitor using the following command:
+
+```bash
+MONITOR_TYPE=web WEB_MONITOR_PORT=8080 cargo run
+```
+
+This will start a web server on port 8080. Open your browser and go to [http://localhost:8080](http://localhost:8080) to interact with the web monitor.
+
+This is meant to replace the need for tesing on an actual raspberry pi with gpio pins while keeping the terminal clean for logs.
+
 ### Deployment
 
 The project includes a deployment script for Raspberry Pi. To deploy, run the deployment script:
