@@ -37,10 +37,9 @@ pub async fn post_webhook(
     State(state): State<AppState>,
     Json(payload): Json<WebhookRequest>,
 ) -> impl IntoResponse {
-    info!("Received webhook registration request");
     match state.storage.add_webhook(&payload.url).await {
         Ok(webhook) => {
-            info!("Successfully registered webhook");
+            info!("Successfully registered webhook: {}", payload.url);
             Json(json!({
                 "status": "success",
                 "message": "Webhook added successfully",
@@ -48,14 +47,14 @@ pub async fn post_webhook(
             })).into_response()
         },
         Err(WebhookError::DuplicateUrl) => {
-            info!("Failed to register webhook: duplicate URL");
+            info!("Failed to register webhook: duplicate URL - {}", payload.url);
             (StatusCode::CONFLICT, Json(json!({
                 "status": "error",
                 "message": format!("Webhook endpoint already exists: {}", payload.url)
             }))).into_response()
         },
         Err(WebhookError::InvalidUrl) => {
-            info!("Failed to register webhook: invalid URL");
+            info!("Failed to register webhook: invalid URL - {}", payload.url);
             (StatusCode::BAD_REQUEST, Json(json!({
                 "status": "error",
                 "message": format!("Invalid URL format: {}", payload.url)
