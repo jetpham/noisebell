@@ -1,26 +1,20 @@
 mod logging;
 mod api;
-mod storage;
 mod monitor;
 mod gpio_monitor;
 mod web_monitor;
-mod webhook_sender;
+mod endpoint_notifier;
+mod config;
 
-use std::{fmt, time::Duration, sync::Arc, env};
+use std::{fmt, sync::Arc};
 use tokio::sync::RwLock;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
-const DEFAULT_GPIO_PIN: u8 = 17;
-const DEFAULT_DEBOUNCE_DELAY_SECS: u64 = 5;
-const DEFAULT_API_PORT: u16 = 3000;
-const DEFAULT_WEB_MONITOR_PORT: u16 = 8080;
-
 // Shared state types
 pub type SharedMonitor = Arc<RwLock<Box<dyn monitor::Monitor>>>;
-pub type SharedStorage = Arc<storage::Storage>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StatusEvent {
@@ -39,25 +33,31 @@ impl fmt::Display for StatusEvent {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    logging::init()?;
+    // Load and validate configuration
+    let config = config::Config::from_env()?;
+    config.validate()?;
+    
+    info!("Configuration loaded successfully");
+    info!("Monitor type: {}", config.monitor.monitor_type);
+    info!("API server: {}:{}", config.api.host, config.api.port);
+    if config.web_monitor.enabled {
+        info!("Web monitor: port {}", config.web_monitor.port);
+    }
 
-    info!("initializing storage");
-    let storage = storage::Storage::new();
-    let shared_storage: SharedStorage = Arc::new(storage);
+    // Initialize logging with config
+    logging::init(&config.logging)?;
 
-    // Check environment variable for monitor type
-    let monitor_type = env::var("MONITOR_TYPE").unwrap_or_else(|_| "gpio".to_string());
-    let web_monitor_port = env::var("WEB_MONITOR_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(DEFAULT_WEB_MONITOR_PORT);
+    // Load endpoint configuration
+    info!("Loading endpoint configuration from: {}", config.endpoints.config_file);
+    let endpoint_config = endpoint_notifier::EndpointConfig::from_file(&config.endpoints.config_file)?;
+    let notifier = Arc::new(endpoint_notifier::EndpointNotifier::new(endpoint_config));
 
-    info!("initializing {} monitor", monitor_type);
+    info!("initializing {} monitor", config.monitor.monitor_type);
     let monitor = monitor::create_monitor(
-        &monitor_type,
-        DEFAULT_GPIO_PIN,
-        Duration::from_secs(DEFAULT_DEBOUNCE_DELAY_SECS),
-        Some(web_monitor_port),
+        &config.monitor.monitor_type,
+        config.gpio.pin,
+        config.get_debounce_delay(),
+        if config.web_monitor.enabled { Some(config.web_monitor.port) } else { None },
     )?;
 
     let shared_monitor: SharedMonitor = Arc::new(RwLock::new(monitor));
@@ -65,15 +65,15 @@ async fn main() -> Result<()> {
     let monitor_for_task = shared_monitor.clone();
     
     let callback = {
-        let storage = shared_storage.clone();
+        let notifier = notifier.clone();
         Box::new(move |event: StatusEvent| {
             info!("Circuit state changed to: {:?}", event);
             
-            // Send webhooks asynchronously
-            let storage = storage.clone();
+            // Notify all configured endpoints
+            let notifier = notifier.clone();
             tokio::spawn(async move {
-                if let Err(e) = webhook_sender::send_webhooks(&storage, event).await {
-                    error!("Failed to send webhooks: {}", e);
+                if let Err(e) = notifier.notify_endpoints(event).await {
+                    error!("Failed to notify endpoints: {}", e);
                 }
             });
         })
@@ -86,14 +86,11 @@ async fn main() -> Result<()> {
     });
 
     let api_handle = tokio::spawn(async move {
-        if let Err(e) = api::start_server(DEFAULT_API_PORT, shared_monitor, shared_storage).await {
+        if let Err(e) = api::start_server(&config.api, shared_monitor).await {
             error!("API server error: {}", e);
         }
     });
 
-    if monitor_type == "web" {
-        info!("Web monitor UI available at: http://localhost:{}", web_monitor_port);
-    }
     info!("Monitor and API server started.");
 
     let _ = tokio::join!(monitor_handle, api_handle);

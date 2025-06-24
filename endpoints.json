@@ -1,0 +1,22 @@
+{
+  "endpoints": [
+    {
+      "url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
+      "name": "Discord Webhook",
+      "timeout_secs": 30,
+      "retry_attempts": 3
+    },
+    {
+      "url": "https://api.slack.com/webhooks/YOUR_SLACK_WEBHOOK_URL",
+      "name": "Slack Webhook",
+      "timeout_secs": 30,
+      "retry_attempts": 3
+    },
+    {
+      "url": "http://localhost:8080/api/status-update",
+      "name": "Local Test Endpoint",
+      "timeout_secs": 10,
+      "retry_attempts": 2
+    }
+  ]
+} 

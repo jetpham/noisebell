@@ -1,20 +1,80 @@
 # <img src="media/noisebell%20logo.svg" width="100" alt="Noisebell Logo" style="vertical-align: middle; margin-right: 20px;"> Noisebell
 
-A switch monitoring system that detects circuit state changes via GPIO and sends webhook notifications to configured endpoints.
+A switch monitoring system that detects circuit state changes via GPIO and notifies configured HTTP endpoints via POST requests.
 
 This is build by [Jet Pham][jetpham] to be used at Noisebridge to replace their old discord status bot
 
 ## Features
 
 - GPIO circuit monitoring with configurable pin
-- Webhook notifications with retry mechanism and exponential backoff
-- REST API for managing webhook endpoints
-- API endpoints for actively polling status and health
+- HTTP endpoint notifications via POST requests
+- REST API for actively polling status and health
 - Daily rotating log files
 - Cross-compilation support for Raspberry Pi deployment
 - Software debouncing to prevent noisy switch detection
-- Concurrent webhook delivery for improved performance
+- Concurrent HTTP notifications for improved performance
 - Comprehensive logging and error reporting
+- Web-based monitor for testing (no physical hardware required)
+- **Unified configuration system** with environment variable support
+
+## Configuration
+
+Noisebell uses a unified configuration system that can be customized through environment variables. Copy `config.example.env` to `.env` and modify the values as needed:
+
+```bash
+cp config.example.env .env
+```
+
+### Configuration Options
+
+#### GPIO Configuration
+
+- `GPIO_PIN` (default: 17) - GPIO pin number to monitor
+- `DEBOUNCE_DELAY_SECS` (default: 5) - Debounce delay in seconds
+
+#### API Server Configuration
+
+- `API_PORT` (default: 3000) - Port for the REST API server
+- `API_HOST` (default: 0.0.0.0) - Host address for the API server
+- `MAX_CONNECTIONS` (default: 1000) - Maximum HTTP connections
+
+#### Web Monitor Configuration
+
+- `WEB_MONITOR_PORT` (default: 8080) - Port for the web monitor UI
+- `WEB_MONITOR_ENABLED` (default: false) - Enable/disable web monitor
+
+#### Logging Configuration
+
+- `LOG_LEVEL` (default: info) - Log level (trace, debug, info, warn, error)
+- `LOG_FILE_PATH` (default: logs/noisebell.log) - Log file path
+- `LOG_MAX_FILES` (default: 7) - Maximum number of log files to keep
+- `LOG_MAX_FILE_SIZE_MB` (default: 10) - Maximum log file size in MB
+
+#### Monitor Configuration
+
+- `MONITOR_TYPE` (default: gpio) - Monitor type (gpio, web)
+- `HEALTH_CHECK_INTERVAL_SECS` (default: 30) - Health check interval
+
+#### Endpoint Configuration
+
+- `ENDPOINT_CONFIG_FILE` (default: endpoints.json) - Path to JSON file containing endpoint configurations
+
+### Example Configuration
+
+```bash
+# For development with web monitor
+MONITOR_TYPE=web
+WEB_MONITOR_ENABLED=true
+LOG_LEVEL=debug
+ENDPOINT_CONFIG_FILE=endpoints.json
+
+# For production with GPIO
+MONITOR_TYPE=gpio
+GPIO_PIN=17
+LOG_LEVEL=info
+MAX_CONNECTIONS=500
+ENDPOINT_CONFIG_FILE=endpoints.json
+```
 
 ## How it works
 
@@ -24,15 +84,13 @@ In this service, we manage two systems that are a source of truth for the status
 
 ### GPIO and Physical Tech
 
-We interact directly over a [GPIO pin in a pull-up configuration][gpio-pullup] to read whether a circuit has been closed with a switch. This is an extremely simple circuit that will internally call a callback function and send out HTTP POST requests to all registered webhook endpoints when the state of the circuit changes.
+We interact directly over a [GPIO pin in a pull-up configuration][gpio-pullup] to read whether a circuit has been closed with a switch. This is an extremely simple circuit that will internally call a callback function and broadcast WebSocket messages to all connected clients when the state of the circuit changes.
 
 When a state change is detected, the system:
 
 1. Logs the circuit state change
-2. Retrieves all registered webhook endpoints
-3. Sends HTTP POST requests concurrently to all endpoints
-4. Implements retry logic with exponential backoff (up to 3 attempts)
-5. Reports success/failure statistics in the logs
+2. Sends HTTP POST requests to all configured endpoints
+3. Reports success/failure statistics in the logs
 
 <details>
 <summary>Debouncing</summary>
@@ -45,89 +103,46 @@ We do debouncing with software via [`set_async_interupt`][rppal-docs] which hand
 
 ### Logging
 
-Logs are stored in the `logs` directory with daily rotation for the past 7 days
+Logs are stored in the `logs` directory with daily rotation for the past 7 days (configurable via `LOG_MAX_FILES`)
 
 ### API
 
-The service exposes a REST API for monitoring and managing webhooks. All endpoints return JSON responses with a `status` field indicating success or error.
+The service exposes a REST API for monitoring and health checks. All endpoints return JSON responses with a `status` field indicating success or error.
 
-#### Webhook Management
+### Endpoint Notifications
 
-- `GET /webhooks` - List all configured webhooks
-
-  ```json
-  {
-    "status": "success",
-    "data": {
-      "webhooks": [
-        {
-          "url": "https://example.com/webhook",
-          "created_at": "2025-01-11T10:30:00Z"
-        }
-      ]
-    }
-  }
-  ```
-
-- `POST /webhooks` - Add a new webhook
-
-  Request body:
-
-  ```json
-  {
-    "url": "https://example.com/webhook"
-  }
-  ```
-
-  Response:
-
-  ```json
-  {
-    "status": "success",
-    "message": "Webhook added successfully",
-    "data": {
-      "url": "https://example.com/webhook",
-      "created_at": "2025-01-11T10:30:00Z"
-    }
-  }
-  ```
-
-  Error Response (when webhook already exists):
-
-  ```json
-  {
-    "status": "error",
-    "message": "Webhook endpoint already exists: https://example.com/webhook"
-  }
-  ```
-
-  Error Response (when URL is invalid):
-
-  ```json
-  {
-    "status": "error",
-    "message": "Invalid URL format: not-a-valid-url"
-  }
-  ```
-  
-#### Webhook Payload Format
-
-When a circuit state change is detected, the following JSON payload is sent to all registered webhook endpoints:
+When a circuit state change is detected, the system sends HTTP POST requests to all configured endpoints with the following JSON payload:
 
 ```json
 {
   "event": "open", // or "closed"
   "timestamp": "2025-01-11T10:30:00Z",
-  "source": "noisebell"
 }
 ```
 
-The webhook delivery includes:
+#### Endpoint Configuration
 
-- **Retry Logic**: Up to 3 attempts with exponential backoff (1s, 2s, 4s delays)
-- **Timeout**: 10-second timeout per request
-- **Concurrent Delivery**: All webhooks are sent simultaneously
-- **Error Reporting**: Failed webhooks are logged with specific URLs and error details
+Endpoints are configured in a JSON file (default: `endpoints.json`) with the following structure:
+
+```json
+{
+  "endpoints": [
+    {
+      "url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
+      "name": "Discord Webhook",
+      "timeout_secs": 30,
+      "retry_attempts": 3
+    }
+  ]
+}
+```
+
+**Endpoint Configuration Options:**
+
+- `url` (required) - The HTTP endpoint URL to POST to
+- `name` (optional) - A friendly name for the endpoint (used in logs)
+- `timeout_secs` (optional, default: 30) - Request timeout in seconds
+- `retry_attempts` (optional, default: 3) - Number of retry attempts on failure
 
 #### Status Endpoints
 
@@ -170,6 +185,10 @@ The health endpoint provides detailed system metrics including:
 - CPU and memory usage
 - Service uptime
 
+### Web Monitor
+
+A web-based monitor is available for testing without physical hardware. When `WEB_MONITOR_ENABLED=true`, you can access the monitor at `http://localhost:8080` to manually trigger state changes and test the endpoint notification system.
+
 ### Images
 
 <div align="center">
@@ -208,7 +227,15 @@ The health endpoint provides detailed system metrics including:
 For local development and testing, you can run the web-based monitor using the following command:
 
 ```bash
-MONITOR_TYPE=web WEB_MONITOR_PORT=8080 cargo run
+MONITOR_TYPE=web WEB_MONITOR_ENABLED=true cargo run
+```
+
+Or set up a `.env` file:
+
+```bash
+cp config.example.env .env
+# Edit .env to set MONITOR_TYPE=web and WEB_MONITOR_ENABLED=true
+cargo run
 ```
 
 This will start a web server on port 8080. Open your browser and go to [http://localhost:8080](http://localhost:8080) to interact with the web monitor.
@@ -223,42 +250,15 @@ The project includes a deployment script for Raspberry Pi. To deploy, run the de
 ./deploy.sh
 ```
 
-This will:
+### Configuration Validation
 
-- Cross-compile the project for `aarch64`
-- Copy the binary and configuration to your Raspberry Pi
-- Create and install a systemd service
-- Restart the [`systemd`][systemd] service
+The application validates all configuration values on startup. If any configuration is invalid, the application will exit with a descriptive error message. Common validation checks include:
 
-### Configuration
-
-The following parameters can be configured in `src/main.rs`:
-
-To modify these settings:
-
-1. Edit the constants in `src/main.rs`
-2. Rebuild the project
-
-#### GPIO Settings
-
-- `DEFAULT_GPIO_PIN`: The GPIO pin number to monitor (default: 17)
-- `DEFAULT_DEBOUNCE_DELAY_SECS`: How long the switch must remain in a stable state before triggering a change, in seconds (default: 5s)
-
-#### API Settings
-
-- `DEFAULT_API_PORT`: The port number for the API server (default: 3000)
-
-#### Logging Settings
-
-- `LOG_DIR`: Directory where log files are stored (default: "logs")
-- `LOG_PREFIX`: Prefix for log filenames (default: "noisebell")
-- `LOG_SUFFIX`: Suffix for log filenames (default: "log")
-- `MAX_LOG_FILES`: Maximum number of log files to keep (default: 7)
-
-#### Webhook Settings
-
-- `WEBHOOK_TIMEOUT_SECS`: HTTP request timeout in seconds (default: 10)
-- `MAX_RETRIES`: Maximum number of retry attempts for failed webhooks (default: 3)
+- GPIO pin must be between 1-40
+- Debounce delay must be greater than 0
+- Monitor type must be either "gpio" or "web"
+- Port numbers must be valid
+- Log levels must be valid (trace, debug, info, warn, error)
 
 [jetpham]: https://jetpham.com/
 [gpio-pullup]: https://raspberrypi.stackexchange.com/questions/4569/what-is-a-pull-up-resistor-what-does-it-do-and-why-is-it-needed
@@ -266,4 +266,3 @@ To modify these settings:
 [rust-install]: https://www.rust-lang.org/tools/install
 [rp02w]: https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/
 [cross-install]: https://github.com/cross-rs/cross
-[systemd]: https://en.wikipedia.org/wiki/Systemd
