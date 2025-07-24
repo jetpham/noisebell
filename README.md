@@ -8,7 +8,6 @@ This is build by [Jet Pham][jetpham] to be used at Noisebridge to replace their 
 
 - GPIO circuit monitoring with configurable pin
 - HTTP endpoint notifications via POST requests
-- REST API for actively polling status and health
 - Daily rotating log files
 - Cross-compilation support for Raspberry Pi deployment
 - Software debouncing to prevent noisy switch detection
@@ -31,12 +30,6 @@ cp config.example.env .env
 
 - `GPIO_PIN` (default: 17) - GPIO pin number to monitor
 - `DEBOUNCE_DELAY_SECS` (default: 5) - Debounce delay in seconds
-
-#### API Server Configuration
-
-- `API_PORT` (default: 3000) - Port for the REST API server
-- `API_HOST` (default: 0.0.0.0) - Host address for the API server
-- `MAX_CONNECTIONS` (default: 1000) - Maximum HTTP connections
 
 #### Web Monitor Configuration
 
@@ -72,7 +65,6 @@ ENDPOINT_CONFIG_FILE=endpoints.json
 MONITOR_TYPE=gpio
 GPIO_PIN=17
 LOG_LEVEL=info
-MAX_CONNECTIONS=500
 ENDPOINT_CONFIG_FILE=endpoints.json
 ```
 
@@ -80,11 +72,11 @@ ENDPOINT_CONFIG_FILE=endpoints.json
 
 This project is the core of a system of services that all-together send and manage notifications about the noisebridge open status.
 
-In this service, we manage two systems that are a source of truth for the status of the noisebridge open status aswell as this services' status.
+In this service, we manage the monitoring of the noisebridge open status and notify configured endpoints when the status changes.
 
 ### GPIO and Physical Tech
 
-We interact directly over a [GPIO pin in a pull-up configuration][gpio-pullup] to read whether a circuit has been closed with a switch. This is an extremely simple circuit that will internally call a callback function and broadcast WebSocket messages to all connected clients when the state of the circuit changes.
+We interact directly over a [GPIO pin in a pull-up configuration][gpio-pullup] to read whether a circuit has been closed with a switch. This is an extremely simple circuit that will internally call a callback function when the state of the circuit changes.
 
 When a state change is detected, the system:
 
@@ -104,10 +96,6 @@ We do debouncing with software via [`set_async_interupt`][rppal-docs] which hand
 ### Logging
 
 Logs are stored in the `logs` directory with daily rotation for the past 7 days (configurable via `LOG_MAX_FILES`)
-
-### API
-
-The service exposes a REST API for monitoring and health checks. All endpoints return JSON responses with a `status` field indicating success or error.
 
 ### Endpoint Notifications
 
@@ -143,47 +131,6 @@ Endpoints are configured in a JSON file (default: `endpoints.json`) with the fol
 - `name` (optional) - A friendly name for the endpoint (used in logs)
 - `timeout_secs` (optional, default: 30) - Request timeout in seconds
 - `retry_attempts` (optional, default: 3) - Number of retry attempts on failure
-
-#### Status Endpoints
-
-- `GET /status` - Get the current state of the monitored circuit
-
-  ```json
-  {
-    "status": "success",
-    "data": {
-      "state": "open" // or "closed"
-    }
-  }
-  ```
-
-- `GET /health` - Get detailed health metrics about the service
-
-This data is parsed from the `systemctl show $SERVICE_NAME` command.
-
-To see what data is possible, see `org.freedesktop.systemd1(5)`
-
-  ```json
-  {
-    "status": "success",
-    "data": {
-      "ActiveState": "active",
-      "SubState": "running",
-      "MainPID": 1234,
-      "TasksCurrent": 1,
-      "CPUUsageSeconds": 120,
-      "MemoryCurrent": 1024000,
-      "Uptime": "2d 5h 30m"
-    }
-  }
-  ```
-
-The health endpoint provides detailed system metrics including:
-
-- Service state and status
-- Process ID and task count
-- CPU and memory usage
-- Service uptime
 
 ### Web Monitor
 

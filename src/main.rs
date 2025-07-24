@@ -1,5 +1,4 @@
 mod logging;
-mod api;
 mod monitor;
 mod gpio_monitor;
 mod web_monitor;
@@ -39,7 +38,6 @@ async fn main() -> Result<()> {
     
     info!("Configuration loaded successfully");
     info!("Monitor type: {}", config.monitor.monitor_type);
-    info!("API server: {}:{}", config.api.host, config.api.port);
     if config.web_monitor.enabled {
         info!("Web monitor: port {}", config.web_monitor.port);
     }
@@ -85,15 +83,9 @@ async fn main() -> Result<()> {
         }
     });
 
-    let api_handle = tokio::spawn(async move {
-        if let Err(e) = api::start_server(&config.api, shared_monitor).await {
-            error!("API server error: {}", e);
-        }
-    });
+    info!("Monitor started with endpoint notifications.");
 
-    info!("Monitor and API server started.");
-
-    let _ = tokio::join!(monitor_handle, api_handle);
+    let _ = tokio::join!(monitor_handle);
     
     Ok(())
 }
