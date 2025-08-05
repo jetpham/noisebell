@@ -139,11 +139,14 @@ impl WebMonitor {
 
 impl Monitor for WebMonitor {
     fn monitor(&mut self, callback: Box<dyn FnMut(StatusEvent) + Send>) -> Result<()> {
-        // Store the callback
+        // Store the callback synchronously to ensure it's available immediately
         let callback_arc = self.callback.clone();
-        tokio::spawn(async move {
-            let mut guard = callback_arc.lock().await;
-            *guard = Some(callback);
+        let rt = tokio::runtime::Handle::current();
+        tokio::task::block_in_place(|| {
+            rt.block_on(async {
+                let mut guard = callback_arc.lock().await;
+                *guard = Some(callback);
+            });
         });
 
         // Run the web server in a blocking task to avoid runtime conflicts

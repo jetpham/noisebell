@@ -30,8 +30,7 @@ impl EndpointNotifier {
         Self { config, client }
     }
 
-    pub async fn notify_endpoints(&self, event: StatusEvent) -> Result<()> {
-        // Convert StatusEvent to lowercase string for API compatibility
+    pub async fn notify_endpoint(&self, event: StatusEvent) -> Result<()> {
         let status = match event {
             StatusEvent::Open => "open",
             StatusEvent::Closed => "closed",
@@ -41,15 +40,12 @@ impl EndpointNotifier {
             "status": status,
         });
 
-        info!("Notifying endpoint at {} about status: {}", self.config.url, status);
-
         let mut success = false;
         let mut last_error = None;
         
         for attempt in 1..=self.config.retry_attempts {
             match self.send_request(&payload).await {
                 Ok(_) => {
-                    info!("Successfully notified endpoint");
                     success = true;
                     break;
                 }
@@ -69,7 +65,6 @@ impl EndpointNotifier {
             return Err(error_msg);
         }
 
-        info!("Endpoint notification completed successfully");
         Ok(())
     }
 
@@ -78,7 +73,6 @@ impl EndpointNotifier {
             .post(&self.config.url)
             .json(payload);
 
-        // Add API key to Authorization header if provided
         if let Some(api_key) = &self.config.api_key {
             request = request.header("Authorization", format!("Bearer {}", api_key));
         }

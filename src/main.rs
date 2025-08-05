@@ -69,14 +69,11 @@ async fn main() -> Result<()> {
     
     let callback = {
         let notifier = notifier.clone();
-        Box::new(move |event: StatusEvent| {
-            info!("Circuit state changed to: {:?}", event);
-            
-            // Notify all configured endpoints
+        Box::new(move |event: StatusEvent| {            
             let notifier = notifier.clone();
             tokio::spawn(async move {
-                if let Err(e) = notifier.notify_endpoints(event).await {
-                    error!("Failed to notify endpoints: {}", e);
+                if let Err(e) = notifier.notify_endpoint(event).await {
+                    error!("Failed to notify endpoint: {}", e);
                 }
             });
         })
