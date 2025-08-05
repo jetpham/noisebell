@@ -1,3 +1,4 @@
 /target
 noisebell.service
 /logs
+.env

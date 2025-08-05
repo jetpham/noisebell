@@ -141,21 +141,23 @@ impl Monitor for WebMonitor {
     fn monitor(&mut self, callback: Box<dyn FnMut(StatusEvent) + Send>) -> Result<()> {
         // Store the callback
         let callback_arc = self.callback.clone();
-        let rt = tokio::runtime::Handle::current();
-        rt.spawn(async move {
+        tokio::spawn(async move {
             let mut guard = callback_arc.lock().await;
             *guard = Some(callback);
         });
 
-        // Start the web server
+        // Run the web server in a blocking task to avoid runtime conflicts
         let server = self.clone();
-        rt.spawn(async move {
-            if let Err(e) = server.start_server().await {
+        tokio::task::spawn_blocking(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            if let Err(e) = rt.block_on(server.start_server()) {
                 error!("Web monitor server error: {}", e);
             }
         });
 
-        Ok(())
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
     }
 
     fn get_current_state(&self) -> StatusEvent {

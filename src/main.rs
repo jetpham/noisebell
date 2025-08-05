@@ -33,7 +33,7 @@ impl fmt::Display for StatusEvent {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Load and validate configuration
-    let config = config::Config::from_file_and_env()?;
+    let config = config::Config::from_env()?;
     config.validate()?;
     
     info!("Configuration loaded successfully");
@@ -90,7 +90,12 @@ async fn main() -> Result<()> {
 
     info!("Monitor started with endpoint notifications.");
 
-    let _ = tokio::join!(monitor_handle);
+    tokio::select! {
+        _ = monitor_handle => {
+            info!("Monitor task completed");
+        }
+    }
     
+    info!("Shutting down noisebell...");
     Ok(())
 }

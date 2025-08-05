@@ -18,13 +18,33 @@ This is build by [Jet Pham][jetpham] to be used at Noisebridge to replace their 
 
 ## Configuration
 
-Noisebell uses a TOML configuration file for most settings, with sensitive data like API keys loaded from environment variables.
+Noisebell uses environment variables for all configuration settings. Copy `env.example` to `.env` and modify the values as needed.
 
 ### Environment Variables
 
-Sensitive configuration like API keys are loaded from environment variables:
+All configuration is handled through environment variables. Here are the available options:
 
-- `ENDPOINT_API_KEY` - API key for Authorization header
+#### GPIO Configuration
+- `NOISEBELL_GPIO_PIN` (default: 17) - GPIO pin number for circuit monitoring
+- `NOISEBELL_GPIO_DEBOUNCE_DELAY_SECS` (default: 5) - Debounce delay in seconds
+
+#### Web Monitor Configuration
+- `NOISEBELL_WEB_MONITOR_PORT` (default: 8080) - Port for web monitor server
+- `NOISEBELL_WEB_MONITOR_ENABLED` (default: true) - Enable/disable web monitor
+
+#### Logging Configuration
+- `NOISEBELL_LOGGING_LEVEL` (default: info) - Log level (trace, debug, info, warn, error)
+- `NOISEBELL_LOGGING_FILE_PATH` (default: logs/noisebell.log) - Log file path
+- `NOISEBELL_LOGGING_MAX_BUFFERED_LINES` (default: 10000) - Maximum buffered log lines
+
+#### Monitor Configuration
+- `NOISEBELL_MONITOR_TYPE` (default: web) - Monitor type (gpio, web)
+
+#### Endpoint Configuration
+- `NOISEBELL_ENDPOINT_URL` (default: https://noisebell.jetpham.com/api/status) - HTTP endpoint URL
+- `ENDPOINT_API_KEY` (optional) - API key for Authorization header
+- `NOISEBELL_ENDPOINT_TIMEOUT_SECS` (default: 30) - Request timeout in seconds
+- `NOISEBELL_ENDPOINT_RETRY_ATTEMPTS` (default: 3) - Number of retry attempts
 
 ### GPIO and Physical Tech
 
@@ -60,18 +80,11 @@ The status field will be either `"open"` or `"closed"` (lowercase).
 
 #### Endpoint Configuration
 
-The endpoint is configured using environment variables:
-
-- `ENDPOINT_URL` (required) - The HTTP endpoint URL to POST to
-- `ENDPOINT_API_KEY` (optional) - API key for Authorization header (Bearer token)
-- `ENDPOINT_TIMEOUT_SECS` (default: 30) - Request timeout in seconds
-- `ENDPOINT_RETRY_ATTEMPTS` (default: 3) - Number of retry attempts on failure
-
-If an API key is provided, it will be included in the `Authorization: Bearer <api_key>` header.
+The endpoint is configured using the environment variables listed above. If an API key is provided, it will be included in the `Authorization: Bearer <api_key>` header.
 
 ### Web Monitor
 
-A web-based monitor is available for testing without physical hardware. When `WEB_MONITOR_ENABLED=true`, you can access the monitor at `http://localhost:8080` to manually trigger state changes and test the endpoint notification system.
+A web-based monitor is available for testing without physical hardware. When `NOISEBELL_WEB_MONITOR_ENABLED=true` (default), you can access the monitor at `http://localhost:8080` to manually trigger state changes and test the endpoint notification system.
 
 ### Images
 
@@ -111,19 +124,16 @@ A web-based monitor is available for testing without physical hardware. When `WE
 For local development and testing, you can run the web-based monitor using the following command:
 
 ```bash
-cargo run
-```
+# Copy the example environment file
+cp env.example .env
 
-The default `config.toml` is already configured for web monitor development. If you need to set an API key:
-
-```bash
-export ENDPOINT_API_KEY=your_api_key_here
+# Run the application
 cargo run
 ```
 
 This will start a web server on port 8080. Open your browser and go to [http://localhost:8080](http://localhost:8080) to interact with the web monitor.
 
-This is meant to replace the need for tesing on an actual raspberry pi with gpio pins while keeping the terminal clean for logs.
+This is meant to replace the need for testing on an actual raspberry pi with gpio pins while keeping the terminal clean for logs.
 
 ### Deployment
 
@@ -142,6 +152,25 @@ The application validates all configuration values on startup. If any configurat
 - Monitor type must be either "gpio" or "web"
 - Port numbers must be valid
 - Log levels must be valid (trace, debug, info, warn, error)
+
+### Quick Start
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd noisebell
+   ```
+
+2. **Set up environment variables:**
+   ```bash
+   cp env.example .env
+   # Edit .env with your configuration
+   ```
+
+3. **Run the application:**
+   ```bash
+   cargo run
+   ```
 
 [jetpham]: https://jetpham.com/
 [gpio-pullup]: https://raspberrypi.stackexchange.com/questions/4569/what-is-a-pull-up-resistor-what-does-it-do-and-why-is-it-needed
