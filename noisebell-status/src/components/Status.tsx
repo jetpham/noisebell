@@ -29,7 +29,7 @@ export async function Status() {
     open: {
       title: 'Open',
       description: "It's time to start hacking.",
-      image: 'https://raw.githubusercontent.com/jetpham/noisebell/refs/heads/webhooks/media/open.png',
+      image: 'https://www.noisebridge.net/images/9/9f/Noisebell_Knife_Switch_Open.png',
       color: 'text-green-600',
       bgColor: 'bg-green-50',
       borderColor: 'border-green-200'
@@ -37,7 +37,7 @@ export async function Status() {
     closed: {
       title: 'Closed',
       description: "We'll see you again soon.",
-      image: 'https://raw.githubusercontent.com/jetpham/noisebell/refs/heads/webhooks/media/closed.png',
+      image: 'https://www.noisebridge.net/images/b/b6/Noisebell_Knife_Switch_Closed.png',
       color: 'text-red-600',
       bgColor: 'bg-red-50',
       borderColor: 'border-red-200'
