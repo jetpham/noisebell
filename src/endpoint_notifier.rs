@@ -50,7 +50,6 @@ impl EndpointNotifier {
     pub async fn notify_endpoints(&self, event: StatusEvent) -> Result<()> {
         let payload = json!({
             "event": event.to_string(),
-            "timestamp": chrono::Utc::now().to_rfc3339(),
         });
 
         info!("Notifying {} endpoints about event: {:?}", self.config.endpoints.len(), event);

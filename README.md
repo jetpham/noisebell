@@ -68,12 +68,6 @@ LOG_LEVEL=info
 ENDPOINT_CONFIG_FILE=endpoints.json
 ```
 
-## How it works
-
-This project is the core of a system of services that all-together send and manage notifications about the noisebridge open status.
-
-In this service, we manage the monitoring of the noisebridge open status and notify configured endpoints when the status changes.
-
 ### GPIO and Physical Tech
 
 We interact directly over a [GPIO pin in a pull-up configuration][gpio-pullup] to read whether a circuit has been closed with a switch. This is an extremely simple circuit that will internally call a callback function when the state of the circuit changes.
@@ -84,14 +78,11 @@ When a state change is detected, the system:
 2. Sends HTTP POST requests to all configured endpoints
 3. Reports success/failure statistics in the logs
 
-<details>
-<summary>Debouncing</summary>
+## Debouncing
 
 When a switch changes state, it can bounce and create multiple rapid signals. Debouncing adds a delay to wait for the signal to settle, ensuring we only detect one clean state change instead of multiple false ones.
 
 We do debouncing with software via [`set_async_interupt`][rppal-docs] which handles software debounce for us.
-
-</details>
 
 ### Logging
 
@@ -103,7 +94,7 @@ When a circuit state change is detected, the system sends HTTP POST requests to 
 
 ```json
 {
-  "event": "open", // or "closed"
+  "event": "open",
   "timestamp": "2025-01-11T10:30:00Z",
 }
 ```
@@ -116,13 +107,13 @@ Endpoints are configured in a JSON file (default: `endpoints.json`) with the fol
 {
   "endpoints": [
     {
-      "url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
-      "name": "Discord Webhook",
+      "url": "https://noisebell.jetpham.com/api/status",
+      "name": "Noisebell Website",
       "timeout_secs": 30,
       "retry_attempts": 3
-    }
+    }  
   ]
-}
+} 
 ```
 
 **Endpoint Configuration Options:**
