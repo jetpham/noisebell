@@ -5,7 +5,6 @@ use anyhow::Result;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub gpio: GpioConfig,
-    pub api: ApiConfig,
     pub web_monitor: WebMonitorConfig,
     pub logging: LoggingConfig,
     pub monitor: MonitorConfig,
@@ -19,13 +18,6 @@ pub struct GpioConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApiConfig {
-    pub port: u16,
-    pub host: String,
-    pub max_connections: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebMonitorConfig {
     pub port: u16,
     pub enabled: bool,
@@ -36,18 +28,19 @@ pub struct LoggingConfig {
     pub level: String,
     pub file_path: String,
     pub max_files: usize,
-    pub max_file_size_mb: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitorConfig {
     pub monitor_type: String,
-    pub health_check_interval_secs: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EndpointConfig {
-    pub config_file: String,
+    pub url: String,
+    pub api_key: Option<String>,
+    pub timeout_secs: u64,
+    pub retry_attempts: u32,
 }
 
 impl Config {
@@ -61,18 +54,6 @@ impl Config {
                 .unwrap_or_else(|_| "5".to_string())
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid DEBOUNCE_DELAY_SECS"))?,
-        };
-
-        let api = ApiConfig {
-            port: std::env::var("API_PORT")
-                .unwrap_or_else(|_| "3000".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid API_PORT"))?,
-            host: std::env::var("API_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
-            max_connections: std::env::var("MAX_CONNECTIONS")
-                .unwrap_or_else(|_| "1000".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid MAX_CONNECTIONS"))?,
         };
 
         let web_monitor = WebMonitorConfig {
@@ -93,27 +74,27 @@ impl Config {
                 .unwrap_or_else(|_| "7".to_string())
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid LOG_MAX_FILES"))?,
-            max_file_size_mb: std::env::var("LOG_MAX_FILE_SIZE_MB")
-                .unwrap_or_else(|_| "10".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid LOG_MAX_FILE_SIZE_MB"))?,
         };
 
         let monitor = MonitorConfig {
             monitor_type: std::env::var("MONITOR_TYPE").unwrap_or_else(|_| "gpio".to_string()),
-            health_check_interval_secs: std::env::var("HEALTH_CHECK_INTERVAL_SECS")
-                .unwrap_or_else(|_| "30".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid HEALTH_CHECK_INTERVAL_SECS"))?,
         };
 
         let endpoints = EndpointConfig {
-            config_file: std::env::var("ENDPOINT_CONFIG_FILE").unwrap_or_else(|_| "endpoints.json".to_string()),
+            url: std::env::var("ENDPOINT_URL").unwrap_or_else(|_| "http://localhost:8080/api/status".to_string()),
+            api_key: std::env::var("ENDPOINT_API_KEY").ok(),
+            timeout_secs: std::env::var("ENDPOINT_TIMEOUT_SECS")
+                .unwrap_or_else(|_| "10".to_string())
+                .parse()
+                .map_err(|_| anyhow::anyhow!("Invalid ENDPOINT_TIMEOUT_SECS"))?,
+            retry_attempts: std::env::var("ENDPOINT_RETRY_ATTEMPTS")
+                .unwrap_or_else(|_| "3".to_string())
+                .parse()
+                .map_err(|_| anyhow::anyhow!("Invalid ENDPOINT_RETRY_ATTEMPTS"))?,
         };
 
         Ok(Config {
             gpio,
-            api,
             web_monitor,
             logging,
             monitor,
@@ -139,10 +120,5 @@ impl Config {
 
     pub fn get_debounce_delay(&self) -> Duration {
         Duration::from_secs(self.gpio.debounce_delay_secs)
-    }
-
-    #[allow(dead_code)]
-    pub fn get_health_check_interval(&self) -> Duration {
-        Duration::from_secs(self.monitor.health_check_interval_secs)
     }
 } 

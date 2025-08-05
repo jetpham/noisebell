@@ -46,8 +46,13 @@ async fn main() -> Result<()> {
     logging::init(&config.logging)?;
 
     // Load endpoint configuration
-    info!("Loading endpoint configuration from: {}", config.endpoints.config_file);
-    let endpoint_config = endpoint_notifier::EndpointConfig::from_file(&config.endpoints.config_file)?;
+    info!("Using endpoint URL: {}", config.endpoints.url);
+    let endpoint_config = endpoint_notifier::EndpointConfig {
+        url: config.endpoints.url.clone(),
+        api_key: config.endpoints.api_key.clone(),
+        timeout_secs: config.endpoints.timeout_secs,
+        retry_attempts: config.endpoints.retry_attempts,
+    };
     let notifier = Arc::new(endpoint_notifier::EndpointNotifier::new(endpoint_config));
 
     info!("initializing {} monitor", config.monitor.monitor_type);

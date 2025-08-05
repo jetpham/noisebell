@@ -41,18 +41,19 @@ cp config.example.env .env
 - `LOG_LEVEL` (default: info) - Log level (trace, debug, info, warn, error)
 - `LOG_FILE_PATH` (default: logs/noisebell.log) - Log file path
 - `LOG_MAX_FILES` (default: 7) - Maximum number of log files to keep
-- `LOG_MAX_FILE_SIZE_MB` (default: 10) - Maximum log file size in MB
 
 #### Monitor Configuration
 
 - `MONITOR_TYPE` (default: gpio) - Monitor type (gpio, web)
-- `HEALTH_CHECK_INTERVAL_SECS` (default: 30) - Health check interval
 
 #### Endpoint Configuration
 
-- `ENDPOINT_CONFIG_FILE` (default: endpoints.json) - Path to JSON file containing endpoint configurations
+- `ENDPOINT_URL` (required) - The HTTP endpoint URL to POST to
+- `ENDPOINT_API_KEY` (optional) - API key for Authorization header (Bearer token)
+- `ENDPOINT_TIMEOUT_SECS` (default: 30) - Request timeout in seconds
+- `ENDPOINT_RETRY_ATTEMPTS` (default: 3) - Number of retry attempts on failure
 
-### Example Configuration
+### Example Configuration File
 
 ```bash
 # For development with web monitor
@@ -65,7 +66,8 @@ ENDPOINT_CONFIG_FILE=endpoints.json
 MONITOR_TYPE=gpio
 GPIO_PIN=17
 LOG_LEVEL=info
-ENDPOINT_CONFIG_FILE=endpoints.json
+ENDPOINT_URL=https://noisebell.jetpham.com/api/status
+ENDPOINT_API_KEY=your_api_key_here
 ```
 
 ### GPIO and Physical Tech
@@ -90,38 +92,26 @@ Logs are stored in the `logs` directory with daily rotation for the past 7 days 
 
 ### Endpoint Notifications
 
-When a circuit state change is detected, the system sends HTTP POST requests to all configured endpoints with the following JSON payload:
+When a circuit state change is detected, the system sends HTTP POST requests to the configured endpoint with the following JSON payload:
 
 ```json
 {
-  "event": "open",
-  "timestamp": "2025-01-11T10:30:00Z",
+  "status": "open"
 }
 ```
 
+The status field will be either `"open"` or `"closed"` (lowercase).
+
 #### Endpoint Configuration
 
-Endpoints are configured in a JSON file (default: `endpoints.json`) with the following structure:
+The endpoint is configured using environment variables:
 
-```json
-{
-  "endpoints": [
-    {
-      "url": "https://noisebell.jetpham.com/api/status",
-      "name": "Noisebell Website",
-      "timeout_secs": 30,
-      "retry_attempts": 3
-    }  
-  ]
-} 
-```
+- `ENDPOINT_URL` (required) - The HTTP endpoint URL to POST to
+- `ENDPOINT_API_KEY` (optional) - API key for Authorization header (Bearer token)
+- `ENDPOINT_TIMEOUT_SECS` (default: 30) - Request timeout in seconds
+- `ENDPOINT_RETRY_ATTEMPTS` (default: 3) - Number of retry attempts on failure
 
-**Endpoint Configuration Options:**
-
-- `url` (required) - The HTTP endpoint URL to POST to
-- `name` (optional) - A friendly name for the endpoint (used in logs)
-- `timeout_secs` (optional, default: 30) - Request timeout in seconds
-- `retry_attempts` (optional, default: 3) - Number of retry attempts on failure
+If an API key is provided, it will be included in the `Authorization: Bearer <api_key>` header.
 
 ### Web Monitor
 

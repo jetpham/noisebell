@@ -8,28 +8,11 @@ use crate::StatusEvent;
 use anyhow::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Endpoint {
-    pub url: String,
-    pub name: Option<String>,
-    pub timeout_secs: Option<u64>,
-    pub retry_attempts: Option<u32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EndpointConfig {
-    pub endpoints: Vec<Endpoint>,
-}
-
-impl EndpointConfig {
-    pub fn from_file(path: &str) -> Result<Self> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("Failed to read endpoint config file: {}", e))?;
-        
-        let config: EndpointConfig = serde_json::from_str(&content)
-            .map_err(|e| anyhow::anyhow!("Failed to parse endpoint config JSON: {}", e))?;
-        
-        Ok(config)
-    }
+    pub url: String,
+    pub api_key: Option<String>,
+    pub timeout_secs: u64,
+    pub retry_attempts: u32,
 }
 
 pub struct EndpointNotifier {
@@ -40,7 +23,7 @@ pub struct EndpointNotifier {
 impl EndpointNotifier {
     pub fn new(config: EndpointConfig) -> Self {
         let client = Client::builder()
-            .timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(config.timeout_secs))
             .build()
             .expect("Failed to create HTTP client");
         
@@ -48,72 +31,60 @@ impl EndpointNotifier {
     }
 
     pub async fn notify_endpoints(&self, event: StatusEvent) -> Result<()> {
+        // Convert StatusEvent to lowercase string for API compatibility
+        let status = match event {
+            StatusEvent::Open => "open",
+            StatusEvent::Closed => "closed",
+        };
+        
         let payload = json!({
-            "event": event.to_string(),
+            "status": status,
         });
 
-        info!("Notifying {} endpoints about event: {:?}", self.config.endpoints.len(), event);
+        info!("Notifying endpoint at {} about status: {}", self.config.url, status);
 
-        let mut tasks = Vec::new();
+        let mut success = false;
+        let mut last_error = None;
         
-        for endpoint in &self.config.endpoints {
-            let task = self.notify_single_endpoint(endpoint, payload.clone());
-            tasks.push(task);
-        }
-
-        // Wait for all notifications to complete
-        let results = futures::future::join_all(tasks).await;
-        
-        let mut success_count = 0;
-        let mut failure_count = 0;
-        
-        for result in results {
-            match result {
-                Ok(_) => success_count += 1,
-                Err(e) => {
-                    error!("Endpoint notification failed: {}", e);
-                    failure_count += 1;
-                }
-            }
-        }
-
-        info!("Endpoint notifications completed: {} success, {} failures", success_count, failure_count);
-        
-        Ok(())
-    }
-
-    async fn notify_single_endpoint(&self, endpoint: &Endpoint, payload: serde_json::Value) -> Result<()> {
-        let timeout = Duration::from_secs(endpoint.timeout_secs.unwrap_or(30));
-        let retry_attempts = endpoint.retry_attempts.unwrap_or(3);
-        
-        let endpoint_name = endpoint.name.as_deref().unwrap_or(&endpoint.url);
-        
-        for attempt in 1..=retry_attempts {
-            match self.send_request(endpoint, &payload, timeout).await {
+        for attempt in 1..=self.config.retry_attempts {
+            match self.send_request(&payload).await {
                 Ok(_) => {
-                    info!("Successfully notified endpoint '{}'", endpoint_name);
-                    return Ok(());
+                    info!("Successfully notified endpoint");
+                    success = true;
+                    break;
                 }
                 Err(e) => {
-                    if attempt == retry_attempts {
-                        error!("Failed to notify endpoint '{}' after {} attempts: {}", endpoint_name, retry_attempts, e);
-                        return Err(e);
-                    } else {
-                        warn!("Attempt {} failed for endpoint '{}': {}. Retrying...", attempt, endpoint_name, e);
+                    last_error = Some(e);
+                    if attempt < self.config.retry_attempts {
+                        warn!("Attempt {} failed: {}. Retrying...", attempt, last_error.as_ref().unwrap());
                         sleep(Duration::from_secs(1)).await;
                     }
                 }
             }
         }
-        
-        unreachable!()
+
+        if !success {
+            let error_msg = last_error.unwrap_or_else(|| anyhow::anyhow!("Unknown error"));
+            error!("Failed to notify endpoint after {} attempts: {}", self.config.retry_attempts, error_msg);
+            return Err(error_msg);
+        }
+
+        info!("Endpoint notification completed successfully");
+        Ok(())
     }
 
-    async fn send_request(&self, endpoint: &Endpoint, payload: &serde_json::Value, timeout: Duration) -> Result<()> {
-        let response = self.client
-            .post(&endpoint.url)
-            .json(payload)
-            .timeout(timeout)
+    async fn send_request(&self, payload: &serde_json::Value) -> Result<()> {
+        let mut request = self.client
+            .post(&self.config.url)
+            .json(payload);
+
+        // Add API key to Authorization header if provided
+        if let Some(api_key) = &self.config.api_key {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        let response = request
+            .timeout(Duration::from_secs(self.config.timeout_secs))
             .send()
             .await?;
 
