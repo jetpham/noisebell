@@ -27,7 +27,7 @@ pub struct WebMonitorConfig {
 pub struct LoggingConfig {
     pub level: String,
     pub file_path: String,
-    pub max_files: usize,
+    pub max_buffered_lines: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,10 +70,10 @@ impl Config {
         let logging = LoggingConfig {
             level: std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
             file_path: std::env::var("LOG_FILE_PATH").unwrap_or_else(|_| "logs/noisebell.log".to_string()),
-            max_files: std::env::var("LOG_MAX_FILES")
-                .unwrap_or_else(|_| "7".to_string())
+            max_buffered_lines: std::env::var("LOG_MAX_BUFFERED_LINES")
+                .unwrap_or_else(|_| "10000".to_string())
                 .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid LOG_MAX_FILES"))?,
+                .map_err(|_| anyhow::anyhow!("Invalid LOG_MAX_BUFFERED_LINES"))?,
         };
 
         let monitor = MonitorConfig {

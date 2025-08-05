@@ -40,7 +40,7 @@ cp config.example.env .env
 
 - `LOG_LEVEL` (default: info) - Log level (trace, debug, info, warn, error)
 - `LOG_FILE_PATH` (default: logs/noisebell.log) - Log file path
-- `LOG_MAX_FILES` (default: 7) - Maximum number of log files to keep
+- `LOG_MAX_BUFFERED_LINES` (default: 10000) - Maximum number of log lines to buffer before dropping
 
 #### Monitor Configuration
 
@@ -88,7 +88,7 @@ We do debouncing with software via [`set_async_interupt`][rppal-docs] which hand
 
 ### Logging
 
-Logs are stored in the `logs` directory with daily rotation for the past 7 days (configurable via `LOG_MAX_FILES`)
+Logs are stored in a single continuous log file in the `logs` directory
 
 ### Endpoint Notifications
 

@@ -1,6 +1,6 @@
 use std::fs;
 use anyhow::Result;
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_appender::rolling::RollingFileAppender;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use crate::config::LoggingConfig;
@@ -12,13 +12,14 @@ pub fn init(config: &LoggingConfig) -> Result<()> {
 
     tracing::info!("initializing logging");
     let file_appender = RollingFileAppender::builder()
-        .rotation(Rotation::DAILY)
+        .rotation(tracing_appender::rolling::Rotation::NEVER)
         .filename_prefix("noisebell")
         .filename_suffix("log")
-        .max_log_files(config.max_files)
         .build(log_dir)?;
 
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+    let (non_blocking, _guard) = tracing_appender::non_blocking::NonBlockingBuilder::default()
+        .buffered_lines_limit(config.max_buffered_lines)
+        .finish(file_appender);
 
     // Parse log level from config
     let level_filter = match config.level.to_lowercase().as_str() {
