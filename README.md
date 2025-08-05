@@ -18,57 +18,13 @@ This is build by [Jet Pham][jetpham] to be used at Noisebridge to replace their 
 
 ## Configuration
 
-Noisebell uses a unified configuration system that can be customized through environment variables. Copy `config.example.env` to `.env` and modify the values as needed:
+Noisebell uses a TOML configuration file for most settings, with sensitive data like API keys loaded from environment variables.
 
-```bash
-cp config.example.env .env
-```
+### Environment Variables
 
-### Configuration Options
+Sensitive configuration like API keys are loaded from environment variables:
 
-#### GPIO Configuration
-
-- `GPIO_PIN` (default: 17) - GPIO pin number to monitor
-- `DEBOUNCE_DELAY_SECS` (default: 5) - Debounce delay in seconds
-
-#### Web Monitor Configuration
-
-- `WEB_MONITOR_PORT` (default: 8080) - Port for the web monitor UI
-- `WEB_MONITOR_ENABLED` (default: false) - Enable/disable web monitor
-
-#### Logging Configuration
-
-- `LOG_LEVEL` (default: info) - Log level (trace, debug, info, warn, error)
-- `LOG_FILE_PATH` (default: logs/noisebell.log) - Log file path
-- `LOG_MAX_BUFFERED_LINES` (default: 10000) - Maximum number of log lines to buffer before dropping
-
-#### Monitor Configuration
-
-- `MONITOR_TYPE` (default: gpio) - Monitor type (gpio, web)
-
-#### Endpoint Configuration
-
-- `ENDPOINT_URL` (required) - The HTTP endpoint URL to POST to
-- `ENDPOINT_API_KEY` (optional) - API key for Authorization header (Bearer token)
-- `ENDPOINT_TIMEOUT_SECS` (default: 30) - Request timeout in seconds
-- `ENDPOINT_RETRY_ATTEMPTS` (default: 3) - Number of retry attempts on failure
-
-### Example Configuration File
-
-```bash
-# For development with web monitor
-MONITOR_TYPE=web
-WEB_MONITOR_ENABLED=true
-LOG_LEVEL=debug
-ENDPOINT_CONFIG_FILE=endpoints.json
-
-# For production with GPIO
-MONITOR_TYPE=gpio
-GPIO_PIN=17
-LOG_LEVEL=info
-ENDPOINT_URL=https://noisebell.jetpham.com/api/status
-ENDPOINT_API_KEY=your_api_key_here
-```
+- `ENDPOINT_API_KEY` - API key for Authorization header
 
 ### GPIO and Physical Tech
 
@@ -155,14 +111,13 @@ A web-based monitor is available for testing without physical hardware. When `WE
 For local development and testing, you can run the web-based monitor using the following command:
 
 ```bash
-MONITOR_TYPE=web WEB_MONITOR_ENABLED=true cargo run
+cargo run
 ```
 
-Or set up a `.env` file:
+The default `config.toml` is already configured for web monitor development. If you need to set an API key:
 
 ```bash
-cp config.example.env .env
-# Edit .env to set MONITOR_TYPE=web and WEB_MONITOR_ENABLED=true
+export ENDPOINT_API_KEY=your_api_key_here
 cargo run
 ```
 

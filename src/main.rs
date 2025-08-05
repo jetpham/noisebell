@@ -33,7 +33,7 @@ impl fmt::Display for StatusEvent {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Load and validate configuration
-    let config = config::Config::from_env()?;
+    let config = config::Config::from_file_and_env()?;
     config.validate()?;
     
     info!("Configuration loaded successfully");
@@ -46,12 +46,12 @@ async fn main() -> Result<()> {
     logging::init(&config.logging)?;
 
     // Load endpoint configuration
-    info!("Using endpoint URL: {}", config.endpoints.url);
+    info!("Using endpoint URL: {}", config.endpoint.url);
     let endpoint_config = endpoint_notifier::EndpointConfig {
-        url: config.endpoints.url.clone(),
-        api_key: config.endpoints.api_key.clone(),
-        timeout_secs: config.endpoints.timeout_secs,
-        retry_attempts: config.endpoints.retry_attempts,
+        url: config.endpoint.url.clone(),
+        api_key: config.endpoint.api_key.clone(),
+        timeout_secs: config.endpoint.timeout_secs,
+        retry_attempts: config.endpoint.retry_attempts,
     };
     let notifier = Arc::new(endpoint_notifier::EndpointNotifier::new(endpoint_config));
 

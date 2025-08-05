@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use std::fs;
 use anyhow::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -8,7 +9,7 @@ pub struct Config {
     pub web_monitor: WebMonitorConfig,
     pub logging: LoggingConfig,
     pub monitor: MonitorConfig,
-    pub endpoints: EndpointConfig,
+    pub endpoint: EndpointConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,62 +45,18 @@ pub struct EndpointConfig {
 }
 
 impl Config {
-    pub fn from_env() -> Result<Self> {
-        let gpio = GpioConfig {
-            pin: std::env::var("GPIO_PIN")
-                .unwrap_or_else(|_| "17".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid GPIO_PIN"))?,
-            debounce_delay_secs: std::env::var("DEBOUNCE_DELAY_SECS")
-                .unwrap_or_else(|_| "5".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid DEBOUNCE_DELAY_SECS"))?,
-        };
-
-        let web_monitor = WebMonitorConfig {
-            port: std::env::var("WEB_MONITOR_PORT")
-                .unwrap_or_else(|_| "8080".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid WEB_MONITOR_PORT"))?,
-            enabled: std::env::var("WEB_MONITOR_ENABLED")
-                .unwrap_or_else(|_| "false".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid WEB_MONITOR_ENABLED"))?,
-        };
-
-        let logging = LoggingConfig {
-            level: std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
-            file_path: std::env::var("LOG_FILE_PATH").unwrap_or_else(|_| "logs/noisebell.log".to_string()),
-            max_buffered_lines: std::env::var("LOG_MAX_BUFFERED_LINES")
-                .unwrap_or_else(|_| "10000".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid LOG_MAX_BUFFERED_LINES"))?,
-        };
-
-        let monitor = MonitorConfig {
-            monitor_type: std::env::var("MONITOR_TYPE").unwrap_or_else(|_| "gpio".to_string()),
-        };
-
-        let endpoints = EndpointConfig {
-            url: std::env::var("ENDPOINT_URL").unwrap_or_else(|_| "http://localhost:8080/api/status".to_string()),
-            api_key: std::env::var("ENDPOINT_API_KEY").ok(),
-            timeout_secs: std::env::var("ENDPOINT_TIMEOUT_SECS")
-                .unwrap_or_else(|_| "10".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid ENDPOINT_TIMEOUT_SECS"))?,
-            retry_attempts: std::env::var("ENDPOINT_RETRY_ATTEMPTS")
-                .unwrap_or_else(|_| "3".to_string())
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid ENDPOINT_RETRY_ATTEMPTS"))?,
-        };
-
-        Ok(Config {
-            gpio,
-            web_monitor,
-            logging,
-            monitor,
-            endpoints,
-        })
+    pub fn from_file_and_env() -> Result<Self> {
+        // Load TOML configuration from file
+        let config_content = fs::read_to_string("config.toml")
+            .map_err(|e| anyhow::anyhow!("Failed to read config.toml: {}", e))?;
+        
+        let mut config: Config = toml::from_str(&config_content)
+            .map_err(|e| anyhow::anyhow!("Failed to parse config.toml: {}", e))?;
+        
+        // Load API key from environment variable (for security)
+        config.endpoint.api_key = std::env::var("ENDPOINT_API_KEY").ok();
+        
+        Ok(config)
     }
 
     pub fn validate(&self) -> Result<()> {
