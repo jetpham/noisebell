@@ -1,59 +1,98 @@
-mod gpio;
-mod discord;
 mod logging;
+mod monitor;
+mod gpio_monitor;
+mod web_monitor;
+mod endpoint_notifier;
+mod config;
 
-use std::time::Duration;
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
+use tokio::sync::RwLock;
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
-const DEFAULT_GPIO_PIN: u8 = 17;
-const DEFAULT_DEBOUNCE_DELAY_SECS: u64 = 5;
+// Shared state types
+pub type SharedMonitor = Arc<RwLock<Box<dyn monitor::Monitor>>>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StatusEvent {
+    Open,
+    Closed,
+}
+
+impl fmt::Display for StatusEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StatusEvent::Open => write!(f, "open"),
+            StatusEvent::Closed => write!(f, "closed"),
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    logging::init()?;
-
-    info!("initializing Discord client");
-    let discord_client = discord::DiscordClient::new().await?;
-    let discord_client = Arc::new(discord_client);
-
-    discord_client.handle_event(discord::SpaceEvent::Initializing).await?;
-
-    info!("initializing gpio monitor");
-    let mut gpio_monitor = gpio::GpioMonitor::new(
-        DEFAULT_GPIO_PIN,
-        Duration::from_secs(DEFAULT_DEBOUNCE_DELAY_SECS)
-    )?;
-
-    // Get a handle to the current runtime
-    let runtime = tokio::runtime::Handle::current();
-
-    // Set up the callback for state changes
-    let callback = move |event: gpio::CircuitEvent| {
-        info!("Circuit state changed to: {:?}", event);
-        let discord_client = discord_client.clone();
-        runtime.spawn(async move {
-            let space_event = match event {
-                gpio::CircuitEvent::Open => discord::SpaceEvent::Open,
-                gpio::CircuitEvent::Closed => discord::SpaceEvent::Closed,
-            };
-            if let Err(e) = discord_client.handle_event(space_event).await {
-                error!("Failed to send Discord message: {}", e);
-            }
-        });
-    };
-
-    if let Err(e) = gpio_monitor.monitor(callback) {
-        error!("GPIO monitoring error: {}", e);
-        return Err(anyhow::anyhow!("GPIO monitoring failed"));
+    // Load and validate configuration
+    let config = config::Config::from_env()?;
+    config.validate()?;
+    
+    info!("Configuration loaded successfully");
+    info!("Monitor type: {}", config.monitor.monitor_type);
+    if config.web_monitor.enabled {
+        info!("Web monitor: port {}", config.web_monitor.port);
     }
 
-    info!("GPIO monitoring started. Press Ctrl+C to exit.");
-    
-    tokio::signal::ctrl_c().await?;
-    info!("Shutting down...");
+    // Initialize logging with config
+    logging::init(&config.logging)?;
 
+    // Load endpoint configuration
+    info!("Using endpoint URL: {}", config.endpoint.url);
+    let endpoint_config = endpoint_notifier::EndpointConfig {
+        url: config.endpoint.url.clone(),
+        api_key: config.endpoint.api_key.clone(),
+        timeout_secs: config.endpoint.timeout_secs,
+        retry_attempts: config.endpoint.retry_attempts,
+    };
+    let notifier = Arc::new(endpoint_notifier::EndpointNotifier::new(endpoint_config));
+
+    info!("initializing {} monitor", config.monitor.monitor_type);
+    let monitor = monitor::create_monitor(
+        &config.monitor.monitor_type,
+        config.gpio.pin,
+        config.get_debounce_delay(),
+        if config.web_monitor.enabled { Some(config.web_monitor.port) } else { None },
+    )?;
+
+    let shared_monitor: SharedMonitor = Arc::new(RwLock::new(monitor));
+
+    let monitor_for_task = shared_monitor.clone();
+    
+    let callback = {
+        let notifier = notifier.clone();
+        Box::new(move |event: StatusEvent| {            
+            let notifier = notifier.clone();
+            tokio::spawn(async move {
+                if let Err(e) = notifier.notify_endpoint(event).await {
+                    error!("Failed to notify endpoint: {}", e);
+                }
+            });
+        })
+    };
+
+    let monitor_handle = tokio::spawn(async move {
+        if let Err(e) = monitor_for_task.write().await.monitor(callback) {
+            error!("Monitor error: {}", e);
+        }
+    });
+
+    info!("Monitor started with endpoint notifications.");
+
+    tokio::select! {
+        _ = monitor_handle => {
+            info!("Monitor task completed");
+        }
+    }
+    
+    info!("Shutting down noisebell...");
     Ok(())
 }

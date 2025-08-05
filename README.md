@@ -1,82 +1,180 @@
-# Noisebell
+# <img src="media/noisebell%20logo.svg" width="100" alt="Noisebell Logo" style="vertical-align: middle; margin-right: 20px;"> Noisebell
 
-A switch monitoring system that detects circuit state changes via GPIO and sends webhook notifications to configured endpoints.
+A switch monitoring system that detects circuit state changes via GPIO and notifies configured HTTP endpoints via POST requests.
 
-This is build by Jet Pham to be used at Noisebridge to replace their old discord status bot
+This is build by [Jet Pham][jetpham] to be used at Noisebridge to replace their old discord status bot
 
 ## Features
 
 - GPIO circuit monitoring with configurable pin
->TODO: - Webhook notifications with retry mechanism 
->TODO: - REST API for managing webhook endpoints 
+- HTTP endpoint notifications via POST requests
 - Daily rotating log files
 - Cross-compilation support for Raspberry Pi deployment
-> Temporarialy calls the discord bot directly
-- Debouncing using a finite state machine
+- Software debouncing to prevent noisy switch detection
+- Concurrent HTTP notifications for improved performance
+- Comprehensive logging and error reporting
+- Web-based monitor for testing (no physical hardware required)
+- **Unified configuration system** with environment variable support
 
-## Requirements
+## Configuration
 
-- Rust toolchain
-- Raspberry Pi (tested on aarch64)
-- For development: Cross-compilation tools (for `cross` command)
+Noisebell uses environment variables for all configuration settings. Copy `env.example` to `.env` and modify the values as needed.
 
-## Installation
+### Environment Variables
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/noisebell.git
-cd noisebell
+All configuration is handled through environment variables. Here are the available options:
+
+#### GPIO Configuration
+- `NOISEBELL_GPIO_PIN` (default: 17) - GPIO pin number for circuit monitoring
+- `NOISEBELL_GPIO_DEBOUNCE_DELAY_SECS` (default: 5) - Debounce delay in seconds
+
+#### Web Monitor Configuration
+- `NOISEBELL_WEB_MONITOR_PORT` (default: 8080) - Port for web monitor server
+- `NOISEBELL_WEB_MONITOR_ENABLED` (default: true) - Enable/disable web monitor
+
+#### Logging Configuration
+- `NOISEBELL_LOGGING_LEVEL` (default: info) - Log level (trace, debug, info, warn, error)
+- `NOISEBELL_LOGGING_FILE_PATH` (default: logs/noisebell.log) - Log file path
+- `NOISEBELL_LOGGING_MAX_BUFFERED_LINES` (default: 10000) - Maximum buffered log lines
+
+#### Monitor Configuration
+- `NOISEBELL_MONITOR_TYPE` (default: web) - Monitor type (gpio, web)
+
+#### Endpoint Configuration
+- `NOISEBELL_ENDPOINT_URL` (default: https://noisebell.jetpham.com/api/status) - HTTP endpoint URL
+- `ENDPOINT_API_KEY` (optional) - API key for Authorization header
+- `NOISEBELL_ENDPOINT_TIMEOUT_SECS` (default: 30) - Request timeout in seconds
+- `NOISEBELL_ENDPOINT_RETRY_ATTEMPTS` (default: 3) - Number of retry attempts
+
+### GPIO and Physical Tech
+
+We interact directly over a [GPIO pin in a pull-up configuration][gpio-pullup] to read whether a circuit has been closed with a switch. This is an extremely simple circuit that will internally call a callback function when the state of the circuit changes.
+
+When a state change is detected, the system:
+
+1. Logs the circuit state change
+2. Sends HTTP POST requests to all configured endpoints
+3. Reports success/failure statistics in the logs
+
+## Debouncing
+
+When a switch changes state, it can bounce and create multiple rapid signals. Debouncing adds a delay to wait for the signal to settle, ensuring we only detect one clean state change instead of multiple false ones.
+
+We do debouncing with software via [`set_async_interupt`][rppal-docs] which handles software debounce for us.
+
+### Logging
+
+Logs are stored in a single continuous log file in the `logs` directory
+
+### Endpoint Notifications
+
+When a circuit state change is detected, the system sends HTTP POST requests to the configured endpoint with the following JSON payload:
+
+```json
+{
+  "status": "open"
+}
 ```
 
-2. Build the project:
+The status field will be either `"open"` or `"closed"` (lowercase).
+
+#### Endpoint Configuration
+
+The endpoint is configured using the environment variables listed above. If an API key is provided, it will be included in the `Authorization: Bearer <api_key>` header.
+
+### Web Monitor
+
+A web-based monitor is available for testing without physical hardware. When `NOISEBELL_WEB_MONITOR_ENABLED=true` (default), you can access the monitor at `http://localhost:8080` to manually trigger state changes and test the endpoint notification system.
+
+### Images
+
+<div align="center">
+<img src="media/noisebell%20knifeswitch.jpg" width="400" alt="Knife Switch">
+<br>
+<em>The knife switch used to detect circuit state changes</em>
+</div>
+
+<br>
+
+<div align="center">
+<img src="media/noisebell%20raspberrypi%20closeup.jpg" width="400" alt="Raspberry Pi Closeup">
+<br>
+<em>Closeup view of the Raspberry Pi setup</em>
+</div>
+
+<br>
+
+<div align="center">
+<img src="media/noisebell%20raspberrypi%20with%20porthole.jpg" width="400" alt="Raspberry Pi with Porthole">
+<br>
+<em>The complete setup showing the Raspberry Pi mounted in a porthole</em>
+</div>
+
+## Development
+
+### Requirements
+
+- Rust toolchain (Install [Rust][rust-install])
+- Raspberry Pi (tested on [RP02W][rp02w])
+- `cross` for cross-compilation (Install [Cross][cross-install])
+- Internet connectivity (wifi for the rp02w)
+
+### Local Development (Web Monitor)
+
+For local development and testing, you can run the web-based monitor using the following command:
+
 ```bash
-cargo build --release
+# Copy the example environment file
+cp env.example .env
+
+# Run the application
+cargo run
 ```
 
-## Deployment
+This will start a web server on port 8080. Open your browser and go to [http://localhost:8080](http://localhost:8080) to interact with the web monitor.
 
-The project includes a deployment script for Raspberry Pi. To deploy:
+This is meant to replace the need for testing on an actual raspberry pi with gpio pins while keeping the terminal clean for logs.
 
-1. Ensure you have cross-compilation tools installed:
-```bash
-cargo install cross
-```
+### Deployment
 
-2. Run the deployment script:
+The project includes a deployment script for Raspberry Pi. To deploy, run the deployment script:
+
 ```bash
 ./deploy.sh
 ```
 
-This will:
-- Cross-compile the project for aarch64
-- Copy the binary and configuration to your Raspberry Pi
-- Set appropriate permissions
+### Configuration Validation
 
-## Logging
+The application validates all configuration values on startup. If any configuration is invalid, the application will exit with a descriptive error message. Common validation checks include:
 
-Logs are stored in the `logs` directory with daily rotation for the past 7 days
+- GPIO pin must be between 1-40
+- Debounce delay must be greater than 0
+- Monitor type must be either "gpio" or "web"
+- Port numbers must be valid
+- Log levels must be valid (trace, debug, info, warn, error)
 
-## Configuration
+### Quick Start
 
-The following parameters can be configured in `src/main.rs`:
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd noisebell
+   ```
 
-### GPIO Settings
-- `DEFAULT_GPIO_PIN`: The GPIO pin number to monitor (default: 17)
-- `DEFAULT_POLL_INTERVAL_MS`: How frequently to check the GPIO pin state in milliseconds (default: 100ms)
-- `DEFAULT_DEBOUNCE_DELAY_SECS`: How long the switch must remain in a stable state before triggering a change, in seconds (default: 5s)
+2. **Set up environment variables:**
+   ```bash
+   cp env.example .env
+   # Edit .env with your configuration
+   ```
 
-### Discord Settings
-The following environment variables must be set:
-- `DISCORD_TOKEN`: Your Discord bot token
-- `DISCORD_CHANNEL_ID`: The ID of the channel where status updates will be posted
+3. **Run the application:**
+   ```bash
+   cargo run
+   ```
 
-### Logging Settings
-- `LOG_DIR`: Directory where log files are stored (default: "logs")
-- `LOG_PREFIX`: Prefix for log filenames (default: "noisebell")
-- `LOG_SUFFIX`: Suffix for log filenames (default: "log")
-- `MAX_LOG_FILES`: Maximum number of log files to keep (default: 7)
-
-To modify these settings:
-1. Edit the constants in `src/main.rs`
-2. Rebuild the project
-3. For Discord keys and channel id, ensure the environment variables are set before running the bot (Done for you in deploy.sh)
+[jetpham]: https://jetpham.com/
+[gpio-pullup]: https://raspberrypi.stackexchange.com/questions/4569/what-is-a-pull-up-resistor-what-does-it-do-and-why-is-it-needed
+[rppal-docs]: https://docs.rs/rppal/latest/rppal/gpio/struct.InputPin.html#method.set_async_interrupt
+[rust-install]: https://www.rust-lang.org/tools/install
+[rp02w]: https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/
+[cross-install]: https://github.com/cross-rs/cross
