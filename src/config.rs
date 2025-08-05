@@ -126,7 +126,7 @@ impl Config {
             return Err(anyhow::anyhow!("GPIO pin must be between 1-40"));
         }
 
-        if self.gpio.debounce_delay_secs == 0 {
+        if self.gpio.debounce_delay_secs <= 0 {
             return Err(anyhow::anyhow!("Debounce delay must be greater than 0"));
         }
 
